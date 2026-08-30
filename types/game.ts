@@ -1,5 +1,6 @@
 export type CharacterId = "alex" | "maya";
 export type WeaponId = "none" | "pistol" | "shotgun" | "smg" | "rifle";
+export type OutfitId = "summer" | "casual" | "formal";
 export type VehicleId = "rental" | "roadster" | "suv" | "grand-tourer";
 export type MissionOutcome = "success" | "partial" | "failure" | "aborted";
 export type GamePhase = "playing" | "hotel-call" | "won" | "lost";
@@ -22,6 +23,7 @@ export interface CharacterState {
   hunger: number;
   heat: number;
   weapon: WeaponId;
+  outfit: OutfitId;
 }
 
 export interface DialogueLine {
@@ -152,7 +154,7 @@ export interface EndingState {
 }
 
 export interface GameState {
-  version: 3;
+  version: 4;
   handler: HandlerState;
   autonomy: AutonomyState;
   totalMinutes: number;

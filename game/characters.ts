@@ -32,7 +32,8 @@ export function createCharacters(): Record<"alex" | "maya", CharacterState> {
       energy: 86,
       hunger: 18,
       heat: 0,
-      weapon: "none"
+      weapon: "none",
+      outfit: "casual"
     },
     maya: {
       id: "maya",
@@ -42,7 +43,8 @@ export function createCharacters(): Record<"alex" | "maya", CharacterState> {
       energy: 89,
       hunger: 16,
       heat: 0,
-      weapon: "none"
+      weapon: "none",
+      outfit: "summer"
     }
   };
 }

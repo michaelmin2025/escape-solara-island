@@ -7,6 +7,7 @@ import {
   choosePath,
   driveTeam,
   eatTogether,
+  equipOutfit,
   escapeReadiness,
   getObjective,
   missionCalculation,
@@ -88,6 +89,19 @@ test("mission order and branch state alter transparent success factors", () => {
   const after = missionCalculation(state, "casino-job");
   assert.equal(after.chance, before.chance + 6);
   assert.ok(after.factors.some((factor) => factor.label.includes("Inés")));
+});
+
+test("operative outfits visibly factor into mission success", () => {
+  const state = afterHotelCall();
+  state.characters.alex.outfit = "summer";
+  state.characters.maya.outfit = "summer";
+  const summerPlan = missionCalculation(state, "casino-job");
+  assert.equal(equipOutfit(state, "alex", "formal").ok, true);
+  assert.equal(equipOutfit(state, "maya", "formal").ok, true);
+  const formalPlan = missionCalculation(state, "casino-job");
+  assert.ok(formalPlan.chance > summerPlan.chance);
+  assert.ok(formalPlan.factors.some((factor) => factor.label === "Alex · Formal Wear"));
+  assert.ok(formalPlan.factors.some((factor) => factor.label === "Maya · Formal Wear"));
 });
 
 test("food and safe rest restore survival resources", () => {
@@ -215,16 +229,18 @@ test("versioned state survives a localStorage round trip", () => {
   state.handler.directive = "Keep heat below two stars.";
   const restored = restoreState(JSON.parse(JSON.stringify(state)));
   assert.equal(restored?.handler.directive, "Keep heat below two stars.");
-  assert.equal(restored?.version, 3);
+  assert.equal(restored?.version, 4);
   assert.equal(restored?.autonomy.enabled, true);
   assert.equal(restored?.objectiveUnlocked, true);
 });
 
-test("version 2 saves migrate to autonomous version 3 state", () => {
+test("version 2 saves migrate to autonomous version 4 state with outfits", () => {
   const legacy = JSON.parse(JSON.stringify(afterHotelCall())) as Record<string, unknown>;
   legacy.version = 2;
   delete legacy.autonomy;
   const restored = restoreState(legacy);
-  assert.equal(restored?.version, 3);
+  assert.equal(restored?.version, 4);
   assert.equal(restored?.autonomy.enabled, true);
+  assert.equal(restored?.characters.alex.outfit, "casual");
+  assert.equal(restored?.characters.maya.outfit, "summer");
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AgentActivityFeed } from "./AgentActivityFeed";
 import { CharacterCard } from "./CharacterCard";
@@ -13,6 +14,7 @@ import {
   dayOf,
   driveTeam,
   eatTogether,
+  equipOutfit,
   equipWeapon,
   escapeReadiness,
   formatClock,
@@ -24,27 +26,17 @@ import {
   setHandlerDirective,
   startTeamMission,
   switchVehicle,
-  teamAverages,
   timeRemaining
 } from "@/game/engine";
 import { autonomyFingerprint, executeAutonomyPlan, planAutonomyStep } from "@/game/autonomy";
 import { createInitialState, restoreState } from "@/game/state";
 import { vehicles } from "@/game/vehicles";
+import handlerPortrait from "@/public/assets/portraits/handler.png";
 import { registerGameTools } from "@/webmcp/registerTools";
-import type { ActionResult, GameState, VehicleId, WeaponId } from "@/types/game";
+import type { ActionResult, GameState, OutfitId, VehicleId, WeaponId } from "@/types/game";
 
-const STORAGE_KEY = "escape-solara-island:v3";
-const LEGACY_STORAGE_KEY = "escape-solara-island:v2";
-
-function Heat({ value }: { value: number }) {
-  const heat = Math.min(5, Math.max(0, Math.round(value)));
-  return (
-    <span className="tracking-wider" aria-label={`${heat} of 5 heat`}>
-      <span className="text-solara-coral">{"★".repeat(heat)}</span>
-      <span className="text-solara-ink/25">{"★".repeat(5 - heat)}</span>
-    </span>
-  );
-}
+const STORAGE_KEY = "escape-solara-island:v4";
+const LEGACY_STORAGE_KEYS = ["escape-solara-island:v3", "escape-solara-island:v2"];
 
 function Palm({ x, flip = false }: { x: number; flip?: boolean }) {
   return (
@@ -135,7 +127,7 @@ export function Game() {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY) ?? LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
       const restored = stored ? restoreState(JSON.parse(stored)) : null;
       if (restored) {
         stateRef.current = restored;
@@ -246,7 +238,7 @@ export function Game() {
   function reset() {
     if (!window.confirm("Reset the operation and erase the current six-day run?")) return;
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     stateRef.current = null;
     setState(null);
     resetAutonomyGuard();
@@ -278,7 +270,6 @@ export function Game() {
     );
   }
 
-  const averages = teamAverages(state);
   const readiness = escapeReadiness(state);
   const objective = getObjective(state);
   const blocked = state.phase !== "playing" || Boolean(state.activeMission || state.currentDecision);
@@ -287,7 +278,10 @@ export function Game() {
     <main className="game-shell">
       <header className="topbar">
         <div className="brand"><span>S</span><div><small>ESCAPE</small><strong>SOLARA ISLAND</strong></div></div>
-        <div className="top-stat"><small>HANDLER</small><strong>{state.handler.name}</strong></div>
+        <div className="top-stat top-handler">
+          <span className="handler-portrait"><Image src={handlerPortrait} alt="Unknown handler" fill sizes="36px" placeholder="blur" /></span>
+          <span><small>HANDLER</small><strong>{state.handler.name}</strong></span>
+        </div>
         <div className="top-stat"><small>EXPEDITION LOG</small><strong>DAY {Math.min(dayOf(state), 6)} · {formatClock(state)}</strong></div>
         <div className="top-stat top-objective">
           <small>CURRENT OBJECTIVE</small>
@@ -301,25 +295,26 @@ export function Game() {
 
       <div className="game-grid">
         <aside className="flex min-h-0 flex-col gap-3">
-          <section className="panel flex min-h-0 flex-1 flex-col overflow-hidden">
-            <header className="panel-header shrink-0"><div><p className="label">FIELD TEAM</p><h2 className="panel-title">Alex + Maya</h2></div><button type="button" aria-pressed={state.autonomy.enabled} onClick={() => act((draft) => setAutonomyMode(draft, !draft.autonomy.enabled))} className={`badge transition-colors ${state.autonomy.enabled ? "border-emerald-700/45 bg-emerald-700/10 text-emerald-800" : "border-solara-ink/25 bg-transparent text-solara-ink/45"}`}>{state.autonomy.enabled ? "AUTO · ON" : "AUTO · OFF"}</button></header>
-            <div className="grid shrink-0 grid-cols-3 border-b border-dashed border-solara-ink/25 bg-solara-sand/30 text-center text-[7px] font-bold tracking-wider text-solara-ink/50">
-              <span className="border-r border-dashed border-solara-ink/25 p-2">HEALTH<strong className="mt-1 block text-[10px] text-solara-ink/85">{Math.round(averages.health)}</strong></span>
-              <span className="border-r border-dashed border-solara-ink/25 p-2">ENERGY<strong className="mt-1 block text-[10px] text-solara-ink/85">{Math.round(averages.energy)}</strong></span>
-              <span className="p-2">HEAT<strong className="mt-1 block text-[9px]"><Heat value={averages.heat} /></strong></span>
-            </div>
-            <div className="flex shrink-0 items-start gap-2 border-b border-dashed border-solara-ink/20 bg-white/35 px-3 py-2">
-              <i className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${state.autonomy.enabled ? "bg-emerald-500 shadow-[0_0_7px_#34d399]" : "bg-solara-ink/25"}`} />
-              <p className="min-w-0 text-[8px] leading-3.5 text-solara-ink/50"><strong className="block text-[7px] font-black tracking-widest text-solara-pine">{state.autonomy.enabled ? "FIELD AI ACTIVE" : "MANUAL ROUTINE CONTROL"}</strong><span className="line-clamp-2">{autonomyStatus}</span></p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
+          <section className="panel operative-dashboard flex min-h-0 flex-1 flex-col overflow-hidden">
+            <header className="panel-header operative-dashboard__header shrink-0">
+              <div><p className="label">HANDLER OPERATIONS</p><h2 className="panel-title">Active operatives</h2><p className="operative-dashboard__status">{autonomyStatus}</p></div>
+              <button type="button" aria-pressed={state.autonomy.enabled} onClick={() => act((draft) => setAutonomyMode(draft, !draft.autonomy.enabled))} className={`badge transition-colors ${state.autonomy.enabled ? "border-emerald-700/45 bg-emerald-700/10 text-emerald-800" : "border-solara-ink/25 bg-transparent text-solara-ink/45"}`}>{state.autonomy.enabled ? "AUTO · ON" : "AUTO · OFF"}</button>
+            </header>
+            <div className="operative-roster">
               {Object.values(state.characters).map((character) => (
-                <CharacterCard key={character.id} character={character} availableWeapons={state.inventory.weapons} onEquip={(weapon) => act((draft) => equipWeapon(draft, character.id, weapon as WeaponId))} />
+                <CharacterCard
+                  key={character.id}
+                  character={character}
+                  availableWeapons={state.inventory.weapons}
+                  disabled={blocked}
+                  onEquipWeapon={(weapon) => act((draft) => equipWeapon(draft, character.id, weapon as WeaponId))}
+                  onEquipOutfit={(outfit) => act((draft) => equipOutfit(draft, character.id, outfit as OutfitId))}
+                />
               ))}
             </div>
           </section>
 
-          <section className="panel shrink-0 p-3">
+          <section className="panel supply-post shrink-0 p-3">
             <p className="label">SUPPLY POST</p>
             <p className="mt-1 text-[8px] leading-3 text-solara-ink/45">With autonomy on, Maya purchases meals and Alex schedules recovery when the team needs it.</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
@@ -353,7 +348,7 @@ export function Game() {
             <p className="label">FINAL EXTRACTION</p>
               <h2 className="panel-title mt-1">Escape readiness</h2>
               <div className="my-3 grid grid-cols-3 gap-1.5">
-                {Object.entries({ Objective: readiness.objective, "$500K": readiness.cash, Team: readiness.alive, Airfield: readiness.airfield, "Heat ≤ 3": readiness.heat, Time: readiness.time }).map(([label, ready]) => (
+                {Object.entries({ Objective: readiness.objective, "$500K": readiness.cash, Team: readiness.alive, Airfield: readiness.airfield, "Wanted ≤ 3": readiness.heat, Time: readiness.time }).map(([label, ready]) => (
                   <span key={label} className={`rounded border px-1 py-2 text-center text-[7px] font-bold ${ready ? "border-solara-pine/40 bg-solara-pine/10 text-solara-pine" : "border-solara-ink/15 text-solara-ink/40"}`}>{ready ? "✓" : "○"} {label}</span>
                 ))}
               </div>
@@ -363,7 +358,7 @@ export function Game() {
       </div>
 
       <form className="directive-bar" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); act((draft) => setHandlerDirective(draft, String(form.get("directive") ?? ""))); }}>
-        <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full border-2 border-solara-ink/40 bg-white/50 font-display text-sm font-bold text-solara-coral">H</span><div><p className="label">HANDLER DIRECTIVE</p><strong className="text-[10px] text-solara-ink/55">Strategy for Alex + Maya</strong></div></div>
+        <div className="flex items-center gap-3"><span className="handler-directive-portrait"><Image src={handlerPortrait} alt="Unknown handler" fill sizes="40px" placeholder="blur" /></span><div><p className="label">HANDLER DIRECTIVE</p><strong className="text-[10px] text-solara-ink/55">Strategy for Alex + Maya</strong></div></div>
         <input key={state.handler.directive} name="directive" defaultValue={state.handler.directive} maxLength={180} className="control px-4 py-3 text-[11px]" />
         <button className="btn-ghost px-5 text-[8px] font-black tracking-widest">RELAY DIRECTIVE ↗</button>
       </form>

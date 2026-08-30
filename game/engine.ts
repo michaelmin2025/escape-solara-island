@@ -1,5 +1,6 @@
 import { locations, postCallLocations, getLocation } from "./locations";
 import { majorMissionIds, missions } from "./missions";
+import { outfitMissionModifier, outfits } from "./outfits";
 import { DEADLINE_MINUTES, TARGET_CASH } from "./state";
 import { vehicles, weapons } from "./vehicles";
 import type {
@@ -12,6 +13,7 @@ import type {
   MissionDefinition,
   MissionOutcome,
   MissionScene,
+  OutfitId,
   Requirement,
   SceneEffects,
   VehicleId,
@@ -98,7 +100,7 @@ export function advanceTime(state: GameState, minutes: number, reason: string) {
   Object.values(state.characters).forEach((character) => {
     character.energy = stat(character.energy - hours * 5.2);
     character.hunger = stat(character.hunger + hours * 4.5);
-    character.heat = Math.round(clamp(character.heat - hours * 0.07, 0, 5) * 10) / 10;
+    character.heat = Math.round(clamp(character.heat - hours * 0.07, 0, 6) * 10) / 10;
     if (character.energy < 12 || character.hunger > 90) character.health = stat(character.health - hours * 2.4);
   });
   const after = dayOf(state);
@@ -111,7 +113,7 @@ function applyEffects(state: GameState, effects?: SceneEffects) {
   if (effects.cash) state.cash = Math.max(0, state.cash + effects.cash);
   if (effects.timeMinutes) advanceTime(state, effects.timeMinutes, "Mission branch");
   Object.values(state.characters).forEach((character) => {
-    if (effects.heat) character.heat = Math.round(clamp(character.heat + effects.heat, 0, 5) * 10) / 10;
+    if (effects.heat) character.heat = Math.round(clamp(character.heat + effects.heat, 0, 6) * 10) / 10;
     if (effects.health) character.health = stat(character.health + effects.health);
     if (effects.energy) character.energy = stat(character.energy + effects.energy);
     if (effects.hunger) character.hunger = stat(character.hunger + effects.hunger);
@@ -196,9 +198,13 @@ export function missionCalculation(state: GameState, missionId: string, baseSucc
   else if (avg.hunger > 80) factors.push({ label: "Severe hunger", value: -10 });
   const bestWeapon = Math.max(...Object.values(state.characters).map((character) => weapons[character.weapon].modifier));
   if (bestWeapon) factors.push({ label: "Weapon loadout", value: bestWeapon });
+  Object.values(state.characters).forEach((character) => {
+    const modifier = outfitMissionModifier(character.outfit, missionId);
+    if (modifier) factors.push({ label: `${character.name} · ${outfits[character.outfit].name}`, value: modifier });
+  });
   const vehicleModifier = vehicles[state.inventory.activeVehicle].missionModifier;
   if (vehicleModifier) factors.push({ label: vehicles[state.inventory.activeVehicle].name, value: vehicleModifier });
-  if (avg.heat >= 1) factors.push({ label: "Police heat", value: -Math.round(avg.heat * 3) });
+  if (avg.heat >= 1) factors.push({ label: "Wanted pressure", value: -Math.round(avg.heat * 3) });
   if (state.activeMission?.missionId === missionId && state.activeMission.successModifier) factors.push({ label: state.activeMission.branchLabel ?? "Handler strategy", value: state.activeMission.successModifier });
   if (missionId === "casino-job" && state.flags.marinaContact) factors.push({ label: "Inés harbor intelligence", value: 6 });
   if (missionId === "industrial-job" && state.flags.casinoAccess) factors.push({ label: "Miraflores access records", value: 5 });
@@ -394,7 +400,7 @@ export function restTogether(state: GameState, hours: number): ActionResult {
     character.energy = stat(character.energy + duration * (safe ? 12 : 8));
     character.health = stat(character.health + duration * (safe ? 3 : 1.5));
     character.hunger = stat(character.hunger + duration * 1.2);
-    character.heat = Math.round(clamp(character.heat - duration * (safe ? 0.34 : 0.18), 0, 5) * 10) / 10;
+    character.heat = Math.round(clamp(character.heat - duration * (safe ? 0.34 : 0.18), 0, 6) * 10) / 10;
   });
   addActivity(state, "recovery", "rest_together", `${duration}h at ${getLocation(state.currentLocation).name}`);
   return { ok: true, message: `Alex and Maya rested for ${duration} hours.` };
@@ -407,6 +413,15 @@ export function equipWeapon(state: GameState, characterId: CharacterId, weaponId
   state.characters[characterId].weapon = weaponId;
   addActivity(state, "system", "equip_weapon", `${state.characters[characterId].name} → ${weapons[weaponId].name}`);
   return { ok: true, message: `${state.characters[characterId].name} equipped ${weapons[weaponId].name}.` };
+}
+
+export function equipOutfit(state: GameState, characterId: CharacterId, outfitId: OutfitId): ActionResult {
+  const blocked = actionBlock(state);
+  if (blocked) return { ok: false, message: blocked };
+  if (!outfits[outfitId]) return { ok: false, message: "That outfit is not available." };
+  state.characters[characterId].outfit = outfitId;
+  addActivity(state, "system", "equip_outfit", `${state.characters[characterId].name} → ${outfits[outfitId].name}`);
+  return { ok: true, message: `${state.characters[characterId].name} changed into ${outfits[outfitId].name}.` };
 }
 
 export function switchVehicle(state: GameState, vehicleId: VehicleId): ActionResult {
@@ -463,7 +478,7 @@ export function attemptEscape(state: GameState): ActionResult {
   if (!ready.cash) missing.push(`secure ${formatMoney(TARGET_CASH - state.cash)} more`);
   if (!ready.alive) missing.push("get both operatives mobile");
   if (!ready.airfield) missing.push("reach Santoro Airstrip");
-  if (!ready.heat) missing.push("reduce heat to 3 or below");
+  if (!ready.heat) missing.push("reduce wanted status to 3 stars or below");
   if (!ready.time) missing.push("the deadline has passed");
   if (missing.length) return { ok: false, message: `Escape unavailable: ${missing.join("; ")}.` };
   advanceTime(state, 25, "Final runway approach");
@@ -479,7 +494,7 @@ export function getObjective(state: GameState) {
   if (state.phase === "hotel-call") return { title: "Answer the handler", detail: "Incoming call at Hotel Aster", progress: 0.08 };
   if (state.activeMission) return { title: `Complete ${missions[state.activeMission.missionId].title}`, detail: state.handler.directive, progress: Math.max(0.1, state.cash / TARGET_CASH) };
   if (state.cash < TARGET_CASH) return { title: "Build the escape fund", detail: `${formatMoney(state.cash)} of ${formatMoney(TARGET_CASH)}`, progress: state.cash / TARGET_CASH };
-  if (state.currentLocation !== "airfield") return { title: "Reach Santoro Airstrip", detail: "Cash secured. Keep team heat at 3 or below.", progress: 1 };
+  if (state.currentLocation !== "airfield") return { title: "Reach Santoro Airstrip", detail: "Cash secured. Keep wanted status at 3 stars or below.", progress: 1 };
   return { title: "Call the final extraction", detail: "All escape conditions are ready.", progress: 1 };
 }
 
