@@ -37,8 +37,9 @@ export function CharacterCard({ character, availableWeapons, onEquip }: Characte
           <h3 className="font-display text-lg text-solara-ink">{character.name}</h3>
           <p className="truncate text-[9px] text-solara-ink/50">{character.role}</p>
         </div>
-        <span className="text-[11px] tracking-wider text-solara-coral" aria-label={`${heat} of 5 heat`}>
-          {"★".repeat(heat)}{"☆".repeat(5 - heat)}
+        <span className="text-[11px] tracking-wider" aria-label={`${heat} of 5 heat`}>
+          <span className="text-solara-coral">{"★".repeat(heat)}</span>
+          <span className="text-solara-ink/25">{"★".repeat(5 - heat)}</span>
         </span>
       </div>
       <div className="space-y-2">
