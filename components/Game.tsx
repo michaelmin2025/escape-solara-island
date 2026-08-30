@@ -1,0 +1,284 @@
+"use client";
+
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { AgentActivityFeed } from "./AgentActivityFeed";
+import { CharacterCard } from "./CharacterCard";
+import { DialoguePanel } from "./DialoguePanel";
+import { HandlerDecision } from "./HandlerDecision";
+import { IslandMap } from "./IslandMap";
+import { MissionPanel } from "./MissionPanel";
+import { ObjectiveBar } from "./ObjectiveBar";
+import {
+  answerHotelCall,
+  attemptEscape,
+  choosePath,
+  dayOf,
+  driveTeam,
+  eatTogether,
+  equipWeapon,
+  escapeReadiness,
+  formatClock,
+  formatDuration,
+  formatMoney,
+  restTogether,
+  setHandlerDirective,
+  startTeamMission,
+  switchVehicle,
+  teamAverages,
+  timeRemaining
+} from "@/game/engine";
+import { createInitialState, restoreState } from "@/game/state";
+import { vehicles } from "@/game/vehicles";
+import { registerGameTools } from "@/webmcp/registerTools";
+import type { ActionResult, GameState, VehicleId, WeaponId } from "@/types/game";
+
+const STORAGE_KEY = "escape-solara-island:v2";
+
+function Heat({ value }: { value: number }) {
+  const heat = Math.round(value);
+  return <span className="tracking-wider text-solara-coral">{"★".repeat(heat)}{"☆".repeat(5 - heat)}</span>;
+}
+
+function PosterSea() {
+  return (
+    <svg className="poster-sea" viewBox="0 0 1200 300" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 92 Q300 68 600 92 T1200 92 V300 H0Z" fill="#2fa3a8" opacity=".85" />
+      <path d="M0 138 Q300 112 600 138 T1200 138 V300 H0Z" fill="#1f8e9b" opacity=".9" />
+      <path d="M0 186 Q300 158 600 186 T1200 186 V300 H0Z" fill="#137089" />
+      <g transform="translate(880 210)">
+        <path d="M-70 26 Q0 6 74 24 L60 40 Q0 52 -58 40Z" fill="#0e5568" opacity=".9" />
+        <path d="M-40 30 L40 30 L30 44 L-32 44Z" fill="#f6efdb" opacity=".9" />
+      </g>
+      <path d="M198 168 l7 -16 l7 16Z M203 154 l2 -10 l2 10Z" fill="#fbf5e5" opacity=".9" />
+      <path d="M0 236 Q300 208 600 236 T1200 236 V300 H0Z" fill="#0c4e64" />
+    </svg>
+  );
+}
+
+export function Game() {
+  const [state, setState] = useState<GameState | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+  const [toast, setToast] = useState("");
+  const [webMcpStatus, setWebMcpStatus] = useState("WebMCP waiting for operation");
+  const stateRef = useRef<GameState | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const restored = stored ? restoreState(JSON.parse(stored)) : null;
+      if (restored) {
+        stateRef.current = restored;
+        setState(restored);
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    stateRef.current = state;
+    if (hydrated && state) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [hydrated, state]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 4200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const perform = useCallback((action: (draft: GameState) => ActionResult) => {
+    if (!stateRef.current) throw new Error("No active operation.");
+    const next = structuredClone(stateRef.current);
+    const result = action(next);
+    stateRef.current = next;
+    setState(next);
+    return { result, state: next };
+  }, []);
+
+  const hasState = state !== null;
+  useEffect(() => {
+    if (!hasState) return;
+    let cancelled = false;
+    let abort: (() => void) | undefined;
+    registerGameTools({ getState: () => stateRef.current as GameState, perform })
+      .then((registration) => {
+        if (cancelled) registration?.abort();
+        else if (registration) {
+          abort = registration.abort;
+          setWebMcpStatus(`${registration.count} WebMCP tools online`);
+        } else setWebMcpStatus("WebMCP preview unavailable · manual controls active");
+      })
+      .catch(() => setWebMcpStatus("WebMCP registration blocked · manual controls active"));
+    return () => {
+      cancelled = true;
+      abort?.();
+    };
+  }, [hasState, perform]);
+
+  const act = useCallback((action: (draft: GameState) => ActionResult) => {
+    const { result } = perform(action);
+    setToast(result.message);
+    return result;
+  }, [perform]);
+
+  function begin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const next = createInitialState(String(form.get("handler") ?? "Handler"));
+    stateRef.current = next;
+    setState(next);
+    setToast(`${next.handler.name}, Alex and Maya are waiting at the airport.`);
+  }
+
+  function reset() {
+    if (!window.confirm("Reset the operation and erase the current six-day run?")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    stateRef.current = null;
+    setState(null);
+    setWebMcpStatus("WebMCP waiting for operation");
+  }
+
+  if (!hydrated) return <div className="grid min-h-screen place-items-center text-xs tracking-[.2em] text-solara-pine">UNROLLING THE ISLAND CHART…</div>;
+
+  if (!state) {
+    return (
+      <main className="opening-screen">
+        <i className="poster-sun" aria-hidden="true" />
+        <PosterSea />
+        <section className="opening-card">
+          <div className="opening-sun">S</div>
+          <div className="opening-card-body">
+            <p className="label">ISLA SOLARA · MEDITERRÁNEO — A WEBMCP ISLAND ADVENTURE</p>
+            <h1 className="opening-title">ESCAPE<br /><em>Solara</em> ISLAND</h1>
+            <p className="max-w-xl text-sm leading-6 text-solara-ink/65">Alex and Maya just landed on a beautiful Mediterranean island with a dangerous six-day job waiting beyond the hotel.</p>
+            <div className="my-6 flex items-center gap-4 rounded-md border border-solara-ink/20 bg-white/45 p-4">
+              <i className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-solara-coral shadow-[0_0_14px_#d95f43]" />
+              <div><small className="block text-[8px] font-black tracking-[.16em] text-solara-coral">INCOMING FIELD CHECK-IN</small><strong className="mt-1 block font-display text-sm italic text-solara-ink/80">“We&apos;re at Solara Airport. Tell us where to go.”</strong></div>
+            </div>
+            <form onSubmit={begin}>
+              <label className="label mb-2 block" htmlFor="handler-name">ENTER YOUR HANDLER NAME</label>
+              <div className="grid grid-cols-[1fr_auto] max-sm:grid-cols-1 max-sm:gap-2">
+                <input id="handler-name" name="handler" maxLength={28} required autoComplete="name" placeholder="e.g. Michael" className="control rounded-r-none px-4 py-4 text-sm max-sm:rounded-md" />
+                <button className="btn-primary rounded-l-none px-6 text-[10px] font-black tracking-widest max-sm:min-h-12 max-sm:rounded-md">BEGIN THE EXPEDITION →</button>
+              </div>
+            </form>
+            <p className="mt-5 text-[10px] leading-5 text-solara-ink/45">You set strategy. An AI agent can operate the shared world through WebMCP. Consequential decisions return to you.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const averages = teamAverages(state);
+  const readiness = escapeReadiness(state);
+  const blocked = state.phase !== "playing" || Boolean(state.activeMission || state.currentDecision);
+
+  return (
+    <main className="game-shell">
+      <header className="topbar">
+        <div className="brand"><span>S</span><div><small>ESCAPE</small><strong>SOLARA ISLAND</strong></div></div>
+        <div className="top-stat"><small>HANDLER</small><strong>{state.handler.name}</strong></div>
+        <div className="top-stat"><small>EXPEDITION LOG</small><strong>DAY {Math.min(dayOf(state), 6)} · {formatClock(state)}</strong></div>
+        <div className="top-stat"><small>ESCAPE FUND</small><strong className="text-solara-coral">{formatMoney(state.cash)} / $500K</strong></div>
+        <div className="top-stat"><small>FINAL WINDOW</small><strong>{formatDuration(timeRemaining(state))}</strong></div>
+        <div className="mcp-pill"><i />{webMcpStatus}</div>
+        <button onClick={reset} className="mr-3 grid h-8 w-8 place-items-center self-center rounded-full border border-solara-ink/30 text-solara-ink/60 hover:border-solara-ink/70 hover:text-solara-ink" aria-label="Reset operation">↻</button>
+      </header>
+
+      <div className="game-grid">
+        <aside className="flex min-h-0 flex-col gap-3">
+          <section className="panel min-h-0 flex-1 overflow-hidden">
+            <header className="panel-header"><div><p className="label">FIELD TEAM</p><h2 className="panel-title">Alex + Maya</h2></div><span className="badge">TOGETHER</span></header>
+            <div className="grid grid-cols-3 border-b border-dashed border-solara-ink/25 bg-solara-sand/30 text-center text-[7px] font-bold tracking-wider text-solara-ink/50">
+              <span className="border-r border-dashed border-solara-ink/25 p-2">HEALTH<strong className="mt-1 block text-[10px] text-solara-ink/85">{Math.round(averages.health)}</strong></span>
+              <span className="border-r border-dashed border-solara-ink/25 p-2">ENERGY<strong className="mt-1 block text-[10px] text-solara-ink/85">{Math.round(averages.energy)}</strong></span>
+              <span className="p-2">HEAT<strong className="mt-1 block text-[9px]"><Heat value={averages.heat} /></strong></span>
+            </div>
+            <div className="max-h-[calc(100%-95px)] overflow-y-auto scrollbar-thin">
+              {Object.values(state.characters).map((character) => (
+                <CharacterCard key={character.id} character={character} availableWeapons={state.inventory.weapons} onEquip={(weapon) => act((draft) => equipWeapon(draft, character.id, weapon as WeaponId))} />
+              ))}
+            </div>
+          </section>
+
+          <section className="panel shrink-0 p-3">
+            <p className="label">SUPPLY POST</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button disabled={blocked} onClick={() => act((draft) => eatTogether(draft, "quick"))} className="small-action"><strong>Quick meal</strong><small>$20 · 35m</small></button>
+              <button disabled={blocked} onClick={() => act((draft) => eatTogether(draft, "restaurant"))} className="small-action"><strong>Restaurant</strong><small>$100 · 1h</small></button>
+              <button disabled={blocked} onClick={() => act((draft) => restTogether(draft, 3))} className="small-action"><strong>Short rest</strong><small>3 hours</small></button>
+              <button disabled={blocked} onClick={() => act((draft) => restTogether(draft, 8))} className="small-action"><strong>Full sleep</strong><small>8 hours</small></button>
+            </div>
+            <label className="label mt-3 grid grid-cols-[auto_1fr] items-center gap-3">ACTIVE VEHICLE
+              <select disabled={blocked} value={state.inventory.activeVehicle} onChange={(event) => act((draft) => switchVehicle(draft, event.target.value as VehicleId))} className="control py-2 text-[9px]">
+                {state.inventory.vehicles.map((vehicle) => <option key={vehicle} value={vehicle}>{vehicles[vehicle].name}</option>)}
+              </select>
+            </label>
+          </section>
+        </aside>
+
+        <section className="center-column">
+          <IslandMap state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} />
+          <ObjectiveBar state={state} />
+          <DialoguePanel lines={state.dialogue} />
+          <MissionPanel state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} onStart={(mission) => act((draft) => startTeamMission(draft, mission))} />
+        </section>
+
+        <aside className="flex min-h-0 flex-col gap-3">
+          <AgentActivityFeed activity={state.activityLog} />
+          <section className="panel shrink-0 p-3">
+            <p className="label">FINAL EXTRACTION</p>
+            <h2 className="panel-title mt-1">Escape readiness</h2>
+            <div className="my-3 grid grid-cols-3 gap-1.5">
+              {Object.entries({ Objective: readiness.objective, "$500K": readiness.cash, Team: readiness.alive, Airfield: readiness.airfield, "Heat ≤ 3": readiness.heat, Time: readiness.time }).map(([label, ready]) => (
+                <span key={label} className={`rounded border px-1 py-2 text-center text-[7px] font-bold ${ready ? "border-solara-pine/40 bg-solara-pine/10 text-solara-pine" : "border-solara-ink/15 text-solara-ink/40"}`}>{ready ? "✓" : "○"} {label}</span>
+              ))}
+            </div>
+            <button disabled={blocked} onClick={() => act(attemptEscape)} className="btn-primary w-full px-3 py-3 text-[9px] font-black tracking-widest disabled:opacity-40">ATTEMPT ESCAPE ✈</button>
+          </section>
+        </aside>
+      </div>
+
+      <form className="directive-bar" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); act((draft) => setHandlerDirective(draft, String(form.get("directive") ?? ""))); }}>
+        <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-full border-2 border-solara-ink/40 bg-white/50 font-display text-sm font-bold text-solara-coral">H</span><div><p className="label">HANDLER DIRECTIVE</p><strong className="text-[10px] text-solara-ink/55">Strategy for Alex + Maya</strong></div></div>
+        <input key={state.handler.directive} name="directive" defaultValue={state.handler.directive} maxLength={180} className="control px-4 py-3 text-[11px]" />
+        <button className="btn-ghost px-5 text-[8px] font-black tracking-widest">RELAY DIRECTIVE ↗</button>
+      </form>
+
+      {state.phase === "hotel-call" && (
+        <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="hotel-call-title">
+          <section className="modal-card max-w-xl text-center">
+            <div className="modal-card-body">
+              <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border-2 border-solara-coral/50 bg-solara-coral/10 text-2xl text-solara-coral">☎</span>
+              <p className="label mt-5">INCOMING CALL · {state.handler.name.toUpperCase()}</p>
+              <h2 id="hotel-call-title" className="mt-3 font-display text-4xl italic text-solara-ink">The real operation begins</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-solara-ink/60">Alex and Maya reached Hotel Aster. Deliver the six-day objective and open the three major mission routes.</p>
+              <button onClick={() => act(answerHotelCall)} className="btn-primary mt-6 px-6 py-3 text-[9px] font-black tracking-widest">ANSWER THE CALL →</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {state.currentDecision && <HandlerDecision decision={state.currentDecision} handlerName={state.handler.name} onChoose={(option) => act((draft) => choosePath(draft, option))} />}
+
+      {(state.phase === "won" || state.phase === "lost") && state.ending && (
+        <div className="modal-layer" role="dialog" aria-modal="true">
+          <section className="modal-card max-w-xl text-center">
+            <div className="modal-card-body">
+              <div className="mx-auto h-20 w-20 rounded-full border-2 border-solara-ink/35 bg-gradient-to-br from-solara-sun to-solara-coral shadow-[0_10px_40px_rgba(217,95,67,.4)]" />
+              <p className="label mt-5">{state.phase === "won" ? "EXPEDITION COMPLETE" : "EXPEDITION FAILED"}</p>
+              <h2 className="mt-3 font-display text-4xl italic text-solara-ink">{state.ending.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-solara-ink/60">{state.ending.message}</p>
+              <div className="my-6 grid grid-cols-2 border-l border-t border-solara-ink/20 text-left text-[9px]"><span className="border-b border-r border-solara-ink/20 p-3 text-solara-ink/50">HANDLER<strong className="mt-1 block text-solara-ink/85">{state.handler.name}</strong></span><span className="border-b border-r border-solara-ink/20 p-3 text-solara-ink/50">FINAL STATUS<strong className="mt-1 block text-solara-ink/85">Day {Math.min(dayOf(state), 6)} · {formatClock(state)}</strong></span><span className="border-b border-r border-solara-ink/20 p-3 text-solara-ink/50">CASH<strong className="mt-1 block text-solara-coral">{formatMoney(state.cash)}</strong></span><span className="border-b border-r border-solara-ink/20 p-3 text-solara-ink/50">MISSIONS<strong className="mt-1 block text-solara-ink/85">{Object.keys(state.completedMissions).length} resolved</strong></span></div>
+              <button onClick={reset} className="btn-primary px-6 py-3 text-[9px] font-black tracking-widest">NEW EXPEDITION ↻</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </main>
+  );
+}
