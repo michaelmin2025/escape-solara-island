@@ -209,7 +209,6 @@ export function Game() {
   if (!state) {
     return (
       <main className="opening-screen">
-        <OpeningScene />
         <section className="opening-menu">
           <h1 className="opening-title">
             <span className="title-line">Escape</span>
