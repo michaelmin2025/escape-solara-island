@@ -1,4 +1,4 @@
-import { locations, postCallLocations, getLocation } from "./locations";
+import { locations, getLocation } from "./locations";
 import { majorMissionIds, missions } from "./missions";
 import { outfitMissionModifier, outfits } from "./outfits";
 import { DEADLINE_MINUTES, TARGET_CASH } from "./state";
@@ -13,6 +13,7 @@ import type {
   MissionDefinition,
   MissionOutcome,
   MissionScene,
+  OpeningMissionId,
   OutfitId,
   Requirement,
   SceneEffects,
@@ -22,6 +23,27 @@ import type {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const stat = (value: number) => Math.round(clamp(value, 0, 100));
+
+export const openingMissionOptions: Array<{ id: OpeningMissionId; label: string; description: string; available: true }> = [
+  {
+    id: "luxury-vehicle",
+    label: "Steal a luxury vehicle",
+    description: "Take a high-end vehicle from a secure private property.",
+    available: true
+  },
+  {
+    id: "arms-deal",
+    label: "Interrupt an arms deal",
+    description: "Break up a weapons exchange before the transfer is completed.",
+    available: true
+  },
+  {
+    id: "drug-shipment",
+    label: "Intercept a drug shipment",
+    description: "Intercept a drug shipment before it leaves the docks.",
+    available: true
+  }
+];
 
 export function dayOf(state: GameState): number {
   return Math.floor(state.totalMinutes / 1440) + 1;
@@ -72,8 +94,24 @@ export function addActivity(state: GameState, kind: ActivityEntry["kind"], title
 }
 
 function addDialogue(state: GameState, lines: DialogueLine[]) {
-  state.dialogue.push(...lines);
+  const identifiedLines = lines.map((line) => {
+    state.dialogueSerial += 1;
+    return { ...line, id: state.dialogueSerial };
+  });
+  state.dialogue.push(...identifiedLines);
   state.dialogue = state.dialogue.slice(-24);
+}
+
+export function completeAirportArrival(state: GameState): ActionResult {
+  if (state.phase !== "arrival") return { ok: false, message: "The aircraft has already landed." };
+  state.phase = "playing";
+  state.flags.airportArrivalComplete = true;
+  addDialogue(state, [
+    { speaker: "ALEX", text: "We're down. Let's collect the rental and head straight to Hotel Aster.", channel: "field" },
+    { speaker: "MAYA", text: "The handler said to check in from the room. No calls until the door is closed.", channel: "field" }
+  ]);
+  addActivity(state, "success", "LANDED AT SOLARA", "Alex and Maya arrived at Solara Island Airport.");
+  return { ok: true, message: "Flight 712 has landed at Solara Island Airport." };
 }
 
 function checkTerminal(state: GameState) {
@@ -82,12 +120,14 @@ function checkTerminal(state: GameState) {
     state.phase = "lost";
     state.activeMission = undefined;
     state.currentDecision = undefined;
+    state.storyChoice = undefined;
     state.ending = { title: "The final flight is gone", message: "Day 6 ended before Alex and Maya cleared Solara Island." };
     addActivity(state, "danger", "OPERATION FAILED", "The six-day escape window closed.");
   } else if (state.characters.alex.health <= 0 && state.characters.maya.health <= 0) {
     state.phase = "lost";
     state.activeMission = undefined;
     state.currentDecision = undefined;
+    state.storyChoice = undefined;
     state.ending = { title: "The field team is down", message: "Both Alex and Maya were incapacitated." };
     addActivity(state, "danger", "OPERATION FAILED", "Neither operative can continue.");
   }
@@ -161,7 +201,7 @@ function optionWithStatus(state: GameState, option: DecisionOption) {
 
 export function getMissionAvailability(state: GameState, mission: MissionDefinition): { available: boolean; reason: string } {
   if (state.phase !== "playing") return { available: false, reason: "Operation paused" };
-  if (state.activeMission || state.currentDecision) return { available: false, reason: "Another mission is active" };
+  if (state.activeMission || state.currentDecision || state.storyChoice) return { available: false, reason: "Another mission is active" };
   if (mission.id === "airport-to-hotel") {
     return state.flags.tutorialComplete ? { available: false, reason: "Tutorial complete" } : { available: true, reason: "Opening mission" };
   }
@@ -324,7 +364,12 @@ export function choosePath(state: GameState, optionId: string): ActionResult {
 
 function actionBlock(state: GameState): string | null {
   if (state.phase === "won" || state.phase === "lost") return "The operation has ended.";
-  if (state.phase === "hotel-call") return "Answer the hotel call first.";
+  if (state.phase === "arrival") return "The aircraft must land before field actions begin.";
+  if (state.phase === "hotel-call") return "The team is checking in and waiting for the handler's call.";
+  if (state.phase === "story-choice") return "Choose one of the handler's three mission options first.";
+  if (state.phase === "story-paused") return "The story is paused while the handler prepares the next briefing.";
+  if (state.phase !== "playing") return "The operation is paused.";
+  if (state.storyChoice) return "Choose one of the handler's three mission options first.";
   if (state.currentDecision) return "The handler must answer the pending decision first.";
   if (state.activeMission) return "A mission is currently running.";
   return null;
@@ -350,26 +395,38 @@ export function driveTeam(state: GameState, destination: string): ActionResult {
   return { ok: true, message: `Alex and Maya reached ${to.name} in ${minutes} minutes.` };
 }
 
-export function answerHotelCall(state: GameState): ActionResult {
+export function beginHotelBriefing(state: GameState): ActionResult {
   if (state.phase !== "hotel-call" || !state.flags.hotelCallPending) return { ok: false, message: "There is no hotel call waiting." };
   addDialogue(state, [
-    { speaker: "HANDLER", text: "Good. Now listen carefully. You need five hundred thousand dollars.", channel: "phone" },
-    { speaker: "MAYA", text: "Five hundred thousand?", channel: "phone" },
-    { speaker: "HANDLER", text: "You have six days. Marina, casino, or industrial harbor—I have a route into each.", channel: "phone" },
-    { speaker: "ALEX", text: "Then give us the first move.", channel: "phone" }
+    { speaker: "HANDLER", text: "Good. I have three missions ready. Choose one and I'll send the full briefing.", channel: "phone" },
+    { speaker: "MAYA", text: "Understood. Which mission do you want us to take?", channel: "phone" }
   ]);
-  state.objectiveUnlocked = true;
-  state.clientMet = true;
   state.flags.hotelCallPending = false;
-  state.flags.objectiveUnlocked = true;
-  state.phase = "playing";
-  state.handler.directive = "Choose a major operation. Build the escape fund to $500,000.";
-  state.discoveredLocations = Array.from(new Set([...state.discoveredLocations, ...postCallLocations]));
-  if (!state.inventory.weapons.includes("pistol")) state.inventory.weapons.push("pistol");
-  state.characters.alex.weapon = "pistol";
-  advanceTime(state, 35, "Hotel briefing");
-  addActivity(state, "success", "OBJECTIVE UNLOCKED · $500,000", "Three major opportunities are live. Valcora's pistol was delivered to the hotel.");
-  return { ok: true, message: "The $500,000 objective, pistol, and three major missions are now available." };
+  state.phase = "story-choice";
+  state.storyChoice = {
+    id: "opening-mission",
+    caller: "handler",
+    prompt: "Choose the first mission.",
+    options: openingMissionOptions.map((option) => ({ ...option }))
+  };
+  state.handler.directive = "Choose the team's first mission.";
+  addActivity(state, "decision", "FIRST MISSION REQUIRED", "The handler presented three operations and is waiting for a choice.");
+  return { ok: true, message: "The handler is waiting for the first mission choice.", decision: state.storyChoice };
+}
+
+export function selectOpeningMission(state: GameState, missionId: OpeningMissionId): ActionResult {
+  if (state.phase !== "story-choice" || !state.storyChoice) return { ok: false, message: "There is no opening mission choice waiting." };
+  const option = state.storyChoice.options.find((candidate) => candidate.id === missionId);
+  if (!option) return { ok: false, message: "Unknown opening mission." };
+  state.openingMission = option.id;
+  state.storyChoice = undefined;
+  state.phase = "story-paused";
+  state.handler.directive = `${option.label} selected. Await the full briefing.`;
+  addDialogue(state, [
+    { speaker: "HANDLER", text: "Confirmed. Hold position while I prepare the briefing.", channel: "phone" }
+  ]);
+  addActivity(state, "decision", `MISSION SELECTED · ${option.label.toUpperCase()}`, "Story paused before the mission briefing.");
+  return { ok: true, message: `${option.label} selected. The story is paused for your next briefing.` };
 }
 
 export function eatTogether(state: GameState, meal: "quick" | "restaurant"): ActionResult {
@@ -490,8 +547,14 @@ export function attemptEscape(state: GameState): ActionResult {
 }
 
 export function getObjective(state: GameState) {
+  if (state.phase === "arrival") return { title: "Land at Solara Airport", detail: "Final approach from the northwest", progress: 0.01 };
   if (!state.flags.tutorialComplete) return { title: "Reach Hotel Aster", detail: "Opening mission · Airport → Hotel", progress: 0.04 };
-  if (state.phase === "hotel-call") return { title: "Answer the handler", detail: "Incoming call at Hotel Aster", progress: 0.08 };
+  if (state.phase === "hotel-call") return { title: "Check in at Hotel Aster", detail: "Waiting for the handler's call", progress: 0.08 };
+  if (state.phase === "story-choice" || state.storyChoice) return { title: "Choose the first mission", detail: "Three operations are ready", progress: 0.1 };
+  if (state.phase === "story-paused") {
+    const selected = openingMissionOptions.find((option) => option.id === state.openingMission);
+    return { title: selected?.label ?? "Await story direction", detail: "Waiting for the next handler briefing", progress: 0.12 };
+  }
   if (state.activeMission) return { title: `Complete ${missions[state.activeMission.missionId].title}`, detail: state.handler.directive, progress: Math.max(0.1, state.cash / TARGET_CASH) };
   if (state.cash < TARGET_CASH) return { title: "Build the escape fund", detail: `${formatMoney(state.cash)} of ${formatMoney(TARGET_CASH)}`, progress: state.cash / TARGET_CASH };
   if (state.currentLocation !== "airfield") return { title: "Reach Santoro Airstrip", detail: "Cash secured. Keep wanted status at 3 stars or below.", progress: 1 };
@@ -504,17 +567,14 @@ export function worldState(state: GameState) {
     autonomy: state.autonomy,
     day: dayOf(state),
     time: formatClock(state),
-    timeRemaining: formatDuration(timeRemaining(state)),
-    cash: state.cash,
-    targetCash: state.targetCash,
     objective: getObjective(state),
     location: getLocation(state.currentLocation),
     characters: state.characters,
     inventory: state.inventory,
-    completedMissions: state.completedMissions,
     activeMission: state.activeMission,
     pendingDecision: state.currentDecision,
-    escapeReadiness: escapeReadiness(state),
+    storyChoice: state.storyChoice,
+    openingMission: state.openingMission,
     phase: state.phase
   };
 }

@@ -3,7 +3,8 @@ export type WeaponId = "none" | "pistol" | "shotgun" | "smg" | "rifle";
 export type OutfitId = "summer" | "casual" | "formal";
 export type VehicleId = "rental" | "roadster" | "suv" | "grand-tourer";
 export type MissionOutcome = "success" | "partial" | "failure" | "aborted";
-export type GamePhase = "playing" | "hotel-call" | "won" | "lost";
+export type GamePhase = "arrival" | "playing" | "hotel-call" | "story-choice" | "story-paused" | "won" | "lost";
+export type OpeningMissionId = "luxury-vehicle" | "arms-deal" | "drug-shipment";
 
 export interface HandlerState {
   name: string;
@@ -27,6 +28,7 @@ export interface CharacterState {
 }
 
 export interface DialogueLine {
+  id?: number;
   speaker: string;
   text: string;
   channel?: "field" | "phone" | "system";
@@ -148,13 +150,25 @@ export interface DecisionState {
   options: Array<DecisionOption & { available: boolean; unavailableReason?: string }>;
 }
 
+export interface StoryChoiceState {
+  id: "opening-mission";
+  caller: "handler";
+  prompt: string;
+  options: Array<{
+    id: OpeningMissionId;
+    label: string;
+    description: string;
+    available: true;
+  }>;
+}
+
 export interface EndingState {
   title: string;
   message: string;
 }
 
 export interface GameState {
-  version: 4;
+  version: 5;
   handler: HandlerState;
   autonomy: AutonomyState;
   totalMinutes: number;
@@ -175,8 +189,12 @@ export interface GameState {
   missionAttempts: Record<string, number>;
   activeMission?: ActiveMission;
   currentDecision?: DecisionState;
+  storyChoice?: StoryChoiceState;
+  openingMission?: OpeningMissionId;
   flags: Record<string, boolean>;
   dialogue: DialogueLine[];
+  dialogueSerial: number;
+  dialogueReadId: number;
   activityLog: ActivityEntry[];
   activitySerial: number;
   failedMissions: number;
@@ -189,6 +207,6 @@ export interface ActionResult {
   ok: boolean;
   message: string;
   outcome?: MissionOutcome | "won";
-  decision?: DecisionState;
+  decision?: DecisionState | StoryChoiceState;
   data?: unknown;
 }

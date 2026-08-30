@@ -6,37 +6,40 @@ import { AgentActivityFeed } from "./AgentActivityFeed";
 import { CharacterCard } from "./CharacterCard";
 import { DialoguePanel } from "./DialoguePanel";
 import { IslandMap, MAP_TRAVEL_ANIMATION_MS } from "./IslandMap";
-import { MissionPanel } from "./MissionPanel";
 import {
-  answerHotelCall,
-  attemptEscape,
+  beginHotelBriefing,
   choosePath,
+  completeAirportArrival,
   dayOf,
   driveTeam,
-  eatTogether,
   equipOutfit,
   equipWeapon,
-  escapeReadiness,
   formatClock,
-  formatDuration,
   formatMoney,
   getObjective,
-  restTogether,
+  openingMissionOptions,
+  selectOpeningMission,
   setAutonomyMode,
-  setHandlerDirective,
-  startTeamMission,
-  switchVehicle,
-  timeRemaining
 } from "@/game/engine";
 import { autonomyFingerprint, executeAutonomyPlan, planAutonomyStep } from "@/game/autonomy";
 import { createInitialState, restoreState } from "@/game/state";
-import { vehicles } from "@/game/vehicles";
 import handlerPortrait from "@/public/assets/portraits/handler.png";
 import { registerGameTools } from "@/webmcp/registerTools";
-import type { ActionResult, GameState, OutfitId, VehicleId, WeaponId } from "@/types/game";
+import type { ActionResult, GameState, OpeningMissionId, OutfitId, WeaponId } from "@/types/game";
 
-const STORAGE_KEY = "escape-solara-island:v4";
-const LEGACY_STORAGE_KEYS = ["escape-solara-island:v3", "escape-solara-island:v2"];
+const STORAGE_KEY = "escape-solara-island:v5";
+const LEGACY_STORAGE_KEYS = ["escape-solara-island:v4", "escape-solara-island:v3", "escape-solara-island:v2"];
+const PORTRAIT_DIALOGUE_SPEAKERS = new Set(["ALEX", "MAYA", "HANDLER"]);
+
+function unreadCharacterDialogueIds(lines: GameState["dialogue"], readThroughId: number) {
+  return lines.flatMap((line) => (
+    typeof line.id === "number" &&
+    line.id > readThroughId &&
+    PORTRAIT_DIALOGUE_SPEAKERS.has(line.speaker.toUpperCase())
+      ? [line.id]
+      : []
+  ));
+}
 
 function Palm({ x, flip = false }: { x: number; flip?: boolean }) {
   return (
@@ -117,19 +120,25 @@ function OpeningScene() {
 export function Game() {
   const [state, setState] = useState<GameState | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [webMcpStatus, setWebMcpStatus] = useState("WebMCP waiting for operation");
   const [autonomyStatus, setAutonomyStatus] = useState("Alex and Maya are assessing the field.");
-  const [hotelCallVisible, setHotelCallVisible] = useState(false);
   const stateRef = useRef<GameState | null>(null);
+  const dialoguePendingRef = useRef(false);
   const autonomyBurstRef = useRef(0);
   const lastAutonomyFingerprintRef = useRef("");
+  const unreadDialogueIds = state ? unreadCharacterDialogueIds(state.dialogue, state.dialogueReadId) : [];
+  const dialoguePending = unreadDialogueIds.length > 0;
+
+  dialoguePendingRef.current = dialoguePending;
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY) ?? LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
       const restored = stored ? restoreState(JSON.parse(stored)) : null;
       if (restored) {
+        dialoguePendingRef.current = unreadCharacterDialogueIds(restored.dialogue, restored.dialogueReadId).length > 0;
         stateRef.current = restored;
         setState(restored);
       }
@@ -151,24 +160,31 @@ export function Game() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  useEffect(() => {
-    if (state?.phase !== "hotel-call") {
-      setHotelCallVisible(false);
-      return;
-    }
-
-    const timer = window.setTimeout(() => setHotelCallVisible(true), MAP_TRAVEL_ANIMATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [state?.phase]);
-
   const perform = useCallback((action: (draft: GameState) => ActionResult) => {
     if (!stateRef.current) throw new Error("No active operation.");
+    if (dialoguePendingRef.current) {
+      return {
+        result: { ok: false, message: "Continue the current dialogue first." },
+        state: stateRef.current
+      };
+    }
     const next = structuredClone(stateRef.current);
     const result = action(next);
+    dialoguePendingRef.current = unreadCharacterDialogueIds(next.dialogue, next.dialogueReadId).length > 0;
     stateRef.current = next;
     setState(next);
     return { result, state: next };
   }, []);
+
+  useEffect(() => {
+    if (dialoguePending || menuOpen || state?.phase !== "hotel-call") return;
+    const timer = window.setTimeout(() => {
+      if (dialoguePendingRef.current || stateRef.current?.phase !== "hotel-call") return;
+      const { result } = perform(beginHotelBriefing);
+      if (result.ok) setToast(result.message);
+    }, MAP_TRAVEL_ANIMATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [dialoguePending, menuOpen, perform, state?.phase]);
 
   const hasState = state !== null;
   useEffect(() => {
@@ -202,13 +218,34 @@ export function Game() {
     return result;
   }, [perform, resetAutonomyGuard]);
 
+  const advanceDialogue = useCallback((lineId: number) => {
+    const current = stateRef.current;
+    if (!current) return;
+    const firstUnreadId = unreadCharacterDialogueIds(current.dialogue, current.dialogueReadId)[0];
+    if (firstUnreadId === undefined || lineId !== firstUnreadId) return;
+    const next = structuredClone(current);
+    next.dialogueReadId = firstUnreadId;
+    dialoguePendingRef.current = unreadCharacterDialogueIds(next.dialogue, next.dialogueReadId).length > 0;
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  const finishArrival = useCallback(() => {
+    if (stateRef.current?.phase !== "arrival") return;
+    act(completeAirportArrival);
+  }, [act]);
+
   useEffect(() => {
-    if (!state) return;
+    if (!state || menuOpen) return;
+    if (dialoguePending) {
+      setAutonomyStatus("Dialogue paused. Continue the conversation before field actions resume.");
+      return;
+    }
     const plan = planAutonomyStep(state);
     setAutonomyStatus(plan.reason);
     if (plan.type === "wait") return;
     if (autonomyBurstRef.current >= 12) {
-      setAutonomyStatus("Autonomy paused after 12 routine actions. Relay a directive or take one manual action to continue.");
+      setAutonomyStatus("Autonomy paused after 12 routine actions. Take one manual action to continue.");
       return;
     }
     const fingerprint = autonomyFingerprint(state, plan);
@@ -217,30 +254,36 @@ export function Game() {
       return;
     }
     const timer = window.setTimeout(() => {
+      if (dialoguePendingRef.current) return;
       lastAutonomyFingerprintRef.current = fingerprint;
       autonomyBurstRef.current += 1;
       const { result } = perform((draft) => executeAutonomyPlan(draft, plan));
       setToast(result.message);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [perform, state]);
+  }, [dialoguePending, menuOpen, perform, state]);
 
   function begin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (state && !window.confirm("Start a new operation and replace the current saved run?")) return;
     const form = new FormData(event.currentTarget);
     const next = createInitialState(String(form.get("handler") ?? "Handler"));
+    dialoguePendingRef.current = unreadCharacterDialogueIds(next.dialogue, next.dialogueReadId).length > 0;
     stateRef.current = next;
     setState(next);
+    setMenuOpen(false);
     resetAutonomyGuard();
-    setToast(`${next.handler.name}, Alex and Maya are waiting at the airport.`);
+    setToast(`${next.handler.name}, Alex and Maya are on final approach to Solara.`);
   }
 
   function reset() {
     if (!window.confirm("Reset the operation and erase the current six-day run?")) return;
     localStorage.removeItem(STORAGE_KEY);
     LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+    dialoguePendingRef.current = false;
     stateRef.current = null;
     setState(null);
+    setMenuOpen(false);
     resetAutonomyGuard();
     setAutonomyStatus("Alex and Maya are assessing the field.");
     setWebMcpStatus("WebMCP waiting for operation");
@@ -248,7 +291,7 @@ export function Game() {
 
   if (!hydrated) return <div className="grid min-h-screen place-items-center text-xs tracking-[.2em] text-solara-pine">UNROLLING THE ISLAND CHART…</div>;
 
-  if (!state) {
+  if (!state || menuOpen) {
     return (
       <main className="opening-screen">
         <section className="opening-menu">
@@ -257,12 +300,17 @@ export function Game() {
             <strong className="title-hero">Solara</strong>
             <span className="title-line">Island</span>
           </h1>
-          <p className="opening-tagline">Agents Alex and Maya have landed on the beautiful Mediterranean island and are awaiting your orders.</p>
+          <p className="opening-tagline">Agents Alex and Maya are approaching the Mediterranean island of Solara. Their first instructions begin after landing.</p>
+          {state && (
+            <button type="button" className="opening-btn opening-continue" onClick={() => setMenuOpen(false)}>
+              Continue operation →
+            </button>
+          )}
           <form className="opening-form" onSubmit={begin}>
-            <label className="opening-label" htmlFor="handler-name">HANDLER NAME</label>
+            <label className="opening-label" htmlFor="handler-name">{state ? "START A NEW OPERATION" : "HANDLER NAME"}</label>
             <div className="opening-row">
-              <input id="handler-name" name="handler" maxLength={28} required autoComplete="name" className="opening-input" />
-              <button className="opening-btn">Begin →</button>
+              <input id="handler-name" name="handler" maxLength={28} required autoComplete="name" className="opening-input" placeholder={state ? "New handler name" : undefined} />
+              <button className="opening-btn">{state ? "New run →" : "Begin →"}</button>
             </div>
           </form>
         </section>
@@ -270,27 +318,48 @@ export function Game() {
     );
   }
 
-  const readiness = escapeReadiness(state);
   const objective = getObjective(state);
-  const blocked = state.phase !== "playing" || Boolean(state.activeMission || state.currentDecision);
+  const blocked = dialoguePending || state.phase !== "playing" || Boolean(state.activeMission || state.currentDecision || state.storyChoice);
+  const selectedOpeningMission = openingMissionOptions.find((option) => option.id === state.openingMission);
+  const storyStage = state.phase === "arrival"
+    ? "Final approach"
+    : !state.flags.tutorialComplete
+      ? "Hotel check-in"
+      : state.phase === "story-choice"
+        ? "Mission selection"
+        : state.phase === "story-paused"
+          ? "Awaiting your script"
+          : "Opening chapter";
 
   return (
     <main className="game-shell">
       <header className="topbar">
-        <div className="brand"><span>S</span><div><small>ESCAPE</small><strong>SOLARA ISLAND</strong></div></div>
-        <div className="top-stat top-handler">
-          <span className="handler-portrait"><Image src={handlerPortrait} alt="Unknown handler" fill sizes="36px" placeholder="blur" /></span>
-          <span><small>HANDLER</small><strong>{state.handler.name}</strong></span>
+        <div className="topbar-cluster topbar-cluster--left">
+          <button type="button" className="main-menu-button" onClick={() => { resetAutonomyGuard(); setMenuOpen(true); }}>
+            <span className="main-menu-icon" aria-hidden="true"><i /><i /><i /></span>
+            <span><small>NAVIGATION</small><strong>MAIN MENU</strong></span>
+          </button>
+          <div className="top-stat top-handler">
+            <span className="handler-portrait"><Image src={handlerPortrait} alt="Unknown handler" fill sizes="32px" placeholder="blur" /></span>
+            <span className="handler-copy"><small>HANDLER</small><strong>{state.handler.name}</strong></span>
+          </div>
+          <div className="top-stat top-log"><small>EXPEDITION LOG</small><strong>DAY {Math.min(dayOf(state), 6)} · {formatClock(state)}</strong></div>
         </div>
-        <div className="top-stat"><small>EXPEDITION LOG</small><strong>DAY {Math.min(dayOf(state), 6)} · {formatClock(state)}</strong></div>
-        <div className="top-stat top-objective">
-          <small>CURRENT OBJECTIVE</small>
-          <strong className="obj-line"><span className="obj-title">{objective.title}</span><span className="obj-cash">{formatMoney(state.cash)} / {formatMoney(state.targetCash)}</span></strong>
-          <div className="obj-bar"><i style={{ width: `${Math.max(3, objective.progress * 100)}%` }} /></div>
+        <div className="top-funds" aria-label={`Current chapter: ${storyStage}. Player-directed story.`}>
+          <small>CURRENT CHAPTER</small>
+          <strong>{storyStage}</strong>
+          <span>PLAYER-DIRECTED STORY</span>
         </div>
-        <div className="top-stat"><small>FINAL WINDOW</small><strong>{formatDuration(timeRemaining(state))}</strong></div>
-        <div className="mcp-pill"><i />{webMcpStatus}</div>
-        <button onClick={reset} className="mr-3 grid h-8 w-8 place-items-center self-center rounded-full border border-solara-ink/30 text-solara-ink/60 hover:border-solara-ink/70 hover:text-solara-ink" aria-label="Reset operation">↻</button>
+        <div className="topbar-cluster topbar-cluster--right">
+          <div className="top-stat top-objective">
+            <small>CURRENT OBJECTIVE</small>
+            <strong className="obj-title">{objective.title}</strong>
+            <div className="obj-bar"><i style={{ width: `${Math.max(3, objective.progress * 100)}%` }} /></div>
+          </div>
+          <div className="top-stat top-story"><small>STORY STATUS</small><strong>{storyStage}</strong></div>
+          <div className="mcp-pill"><i /><span>{webMcpStatus}</span></div>
+          <button onClick={reset} className="top-reset" aria-label="Reset operation">↻</button>
+        </div>
       </header>
 
       <div className="game-grid">
@@ -298,7 +367,7 @@ export function Game() {
           <section className="panel operative-dashboard flex min-h-0 flex-1 flex-col overflow-hidden">
             <header className="panel-header operative-dashboard__header shrink-0">
               <div><p className="label">HANDLER OPERATIONS</p><h2 className="panel-title">Active operatives</h2><p className="operative-dashboard__status">{autonomyStatus}</p></div>
-              <button type="button" aria-pressed={state.autonomy.enabled} onClick={() => act((draft) => setAutonomyMode(draft, !draft.autonomy.enabled))} className={`badge transition-colors ${state.autonomy.enabled ? "border-emerald-700/45 bg-emerald-700/10 text-emerald-800" : "border-solara-ink/25 bg-transparent text-solara-ink/45"}`}>{state.autonomy.enabled ? "AUTO · ON" : "AUTO · OFF"}</button>
+              <button type="button" disabled={dialoguePending} aria-pressed={state.autonomy.enabled} onClick={() => act((draft) => setAutonomyMode(draft, !draft.autonomy.enabled))} className={`badge transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${state.autonomy.enabled ? "border-emerald-700/45 bg-emerald-700/10 text-emerald-800" : "border-solara-ink/25 bg-transparent text-solara-ink/45"}`}>{state.autonomy.enabled ? "AUTO · ON" : "AUTO · OFF"}</button>
             </header>
             <div className="operative-roster">
               {Object.values(state.characters).map((character) => (
@@ -314,68 +383,51 @@ export function Game() {
             </div>
           </section>
 
-          <section className="panel supply-post shrink-0 p-3">
-            <p className="label">SUPPLY POST</p>
-            <p className="mt-1 text-[8px] leading-3 text-solara-ink/45">With autonomy on, Maya purchases meals and Alex schedules recovery when the team needs it.</p>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <button disabled={blocked} onClick={() => act((draft) => eatTogether(draft, "quick"))} className="small-action"><strong>Quick meal</strong><small>$20 · 35m</small></button>
-              <button disabled={blocked} onClick={() => act((draft) => eatTogether(draft, "restaurant"))} className="small-action"><strong>Restaurant</strong><small>$100 · 1h</small></button>
-              <button disabled={blocked} onClick={() => act((draft) => restTogether(draft, 3))} className="small-action"><strong>Short rest</strong><small>3 hours</small></button>
-              <button disabled={blocked} onClick={() => act((draft) => restTogether(draft, 8))} className="small-action"><strong>Full sleep</strong><small>8 hours</small></button>
-            </div>
-            <label className="label mt-3 grid grid-cols-[auto_1fr] items-center gap-3">ACTIVE VEHICLE
-              <select disabled={blocked} value={state.inventory.activeVehicle} onChange={(event) => act((draft) => switchVehicle(draft, event.target.value as VehicleId))} className="control py-2 text-[9px]">
-                {state.inventory.vehicles.map((vehicle) => <option key={vehicle} value={vehicle}>{vehicles[vehicle].name}</option>)}
-              </select>
-            </label>
-          </section>
         </aside>
 
         <section className="center-column">
-          <IslandMap state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} />
+          <IslandMap state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} onArrivalComplete={finishArrival} interactionDisabled={dialoguePending} />
           <DialoguePanel
             lines={state.dialogue}
-            decision={state.currentDecision}
+            decision={state.currentDecision ?? state.storyChoice}
             handlerName={state.handler.name}
-            onChoose={(option) => act((draft) => choosePath(draft, option))}
+            readThroughId={state.dialogueReadId}
+            onAdvance={advanceDialogue}
+            onChoose={(option) => act((draft) => draft.storyChoice
+              ? selectOpeningMission(draft, option as OpeningMissionId)
+              : choosePath(draft, option))}
           />
         </section>
 
         <aside className="flex min-h-0 flex-col gap-3">
           <AgentActivityFeed activity={state.activityLog} />
-          <MissionPanel state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} onStart={(mission) => act((draft) => startTeamMission(draft, mission))} />
           <section className="panel shrink-0 p-3">
-            <p className="label">FINAL EXTRACTION</p>
-              <h2 className="panel-title mt-1">Escape readiness</h2>
-              <div className="my-3 grid grid-cols-3 gap-1.5">
-                {Object.entries({ Objective: readiness.objective, "$500K": readiness.cash, Team: readiness.alive, Airfield: readiness.airfield, "Wanted ≤ 3": readiness.heat, Time: readiness.time }).map(([label, ready]) => (
-                  <span key={label} className={`rounded border px-1 py-2 text-center text-[7px] font-bold ${ready ? "border-solara-pine/40 bg-solara-pine/10 text-solara-pine" : "border-solara-ink/15 text-solara-ink/40"}`}>{ready ? "✓" : "○"} {label}</span>
-                ))}
-              </div>
-              <button disabled={blocked} onClick={() => act(attemptEscape)} className="btn-primary w-full px-3 py-3 text-[9px] font-black tracking-widest disabled:opacity-40">ATTEMPT ESCAPE ✈</button>
+            <p className="label">STORY DIRECTION</p>
+            <h2 className="panel-title mt-1">{selectedOpeningMission?.label ?? storyStage}</h2>
+            <p className="mt-2 text-[9px] leading-4 text-solara-ink/55">
+              {state.phase === "arrival"
+                ? "Flight 712 is approaching from the northwest."
+                : state.phase === "story-choice"
+                  ? "Choose one operation in the dialogue box."
+                  : state.phase === "story-paused"
+                    ? "The opening stops here until you write the next briefing."
+                    : "Alex and Maya are heading to Hotel Aster for the handler's call."}
+            </p>
+            {(state.storyChoice || state.openingMission) && (
+              <ol className="mt-3 grid gap-1.5" aria-label="Handler mission options">
+                {openingMissionOptions.map((option) => {
+                  const selected = option.id === state.openingMission;
+                  return (
+                    <li key={option.id} className={`rounded border px-2.5 py-2 text-[8px] font-bold ${selected ? "border-solara-coral/55 bg-solara-coral/10 text-solara-coral" : "border-solara-ink/15 text-solara-ink/45"}`}>
+                      <span aria-hidden="true">{selected ? "◆" : "◇"}</span> {option.label}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </section>
         </aside>
       </div>
-
-      <form className="directive-bar" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); act((draft) => setHandlerDirective(draft, String(form.get("directive") ?? ""))); }}>
-        <div className="flex items-center gap-3"><span className="handler-directive-portrait"><Image src={handlerPortrait} alt="Unknown handler" fill sizes="40px" placeholder="blur" /></span><div><p className="label">HANDLER DIRECTIVE</p><strong className="text-[10px] text-solara-ink/55">Strategy for Alex + Maya</strong></div></div>
-        <input key={state.handler.directive} name="directive" defaultValue={state.handler.directive} maxLength={180} className="control px-4 py-3 text-[11px]" />
-        <button className="btn-ghost px-5 text-[8px] font-black tracking-widest">RELAY DIRECTIVE ↗</button>
-      </form>
-
-      {state.phase === "hotel-call" && hotelCallVisible && (
-        <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="hotel-call-title">
-          <section className="modal-card max-w-xl text-center">
-            <div className="modal-card-body">
-              <span className="mx-auto grid h-16 w-16 place-items-center rounded-full border-2 border-solara-coral/50 bg-solara-coral/10 text-2xl text-solara-coral">☎</span>
-              <p className="label mt-5">INCOMING CALL · {state.handler.name.toUpperCase()}</p>
-              <h2 id="hotel-call-title" className="mt-3 font-display text-4xl italic text-solara-ink">The real operation begins</h2>
-              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-solara-ink/60">Alex and Maya reached Hotel Aster. Deliver the six-day objective and open the three major mission routes.</p>
-              <button onClick={() => act(answerHotelCall)} className="btn-primary mt-6 px-6 py-3 text-[9px] font-black tracking-widest">ANSWER THE CALL →</button>
-            </div>
-          </section>
-        </div>
-      )}
 
       {(state.phase === "won" || state.phase === "lost") && state.ending && (
         <div className="modal-layer" role="dialog" aria-modal="true">

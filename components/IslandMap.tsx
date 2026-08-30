@@ -1,6 +1,7 @@
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import airplaneArrival from "@/public/assets/airplane-arrival.png";
 import islandMapArt from "@/public/assets/isla-solara-map-realistic.png";
 import { locations } from "@/game/locations";
 import { vehicles } from "@/game/vehicles";
@@ -9,6 +10,8 @@ import type { GameState } from "@/types/game";
 interface IslandMapProps {
   state: GameState;
   onDrive: (destination: string) => void;
+  onArrivalComplete: () => void;
+  interactionDisabled?: boolean;
 }
 
 const MAP_IMAGE_SIZES =
@@ -132,7 +135,8 @@ const WAVES: Array<[number, number]> = [
   [180, 80]
 ];
 
-export const MAP_TRAVEL_ANIMATION_MS = 820;
+export const MAP_TRAVEL_ANIMATION_MS = 1000;
+export const AIRCRAFT_ARRIVAL_ANIMATION_MS = 5200;
 
 function Pines({ x, y }: { x: number; y: number }) {
   return (
@@ -153,17 +157,36 @@ function Lighthouse({ x, y }: { x: number; y: number }) {
   );
 }
 
-export function IslandMap({ state, onDrive }: IslandMapProps) {
+export function IslandMap({ state, onDrive, onArrivalComplete, interactionDisabled = false }: IslandMapProps) {
   const current = locations[state.currentLocation];
   const activeVehicle = vehicles[state.inventory.activeVehicle];
   const [markerPosition, setMarkerPosition] = useState(() => ({ x: current.x, y: current.y }));
   const [isMoving, setIsMoving] = useState(false);
+  const [vehicleHeading, setVehicleHeading] = useState(8);
   const renderedLocationRef = useRef(state.currentLocation);
-  const blocked = Boolean(state.currentDecision || state.activeMission) || state.phase !== "playing";
+  const arrivalReportedRef = useRef(false);
+  const arrivalActive = state.phase === "arrival";
+  const blocked = interactionDisabled || Boolean(state.currentDecision || state.activeMission) || state.phase !== "playing";
+
+  const reportArrival = useCallback(() => {
+    if (!arrivalActive || arrivalReportedRef.current) return;
+    arrivalReportedRef.current = true;
+    onArrivalComplete();
+  }, [arrivalActive, onArrivalComplete]);
+
+  useEffect(() => {
+    if (!arrivalActive) return;
+    const fallbackTimer = window.setTimeout(reportArrival, AIRCRAFT_ARRIVAL_ANIMATION_MS + 350);
+    return () => window.clearTimeout(fallbackTimer);
+  }, [arrivalActive, reportArrival]);
 
   useEffect(() => {
     if (renderedLocationRef.current === state.currentLocation) return;
 
+    const previous = locations[renderedLocationRef.current];
+    const visualDeltaX = (current.x - previous.x) * (1755 / 896);
+    const visualDeltaY = current.y - previous.y;
+    setVehicleHeading((Math.atan2(visualDeltaY, visualDeltaX) * 180) / Math.PI + 90);
     renderedLocationRef.current = state.currentLocation;
     setIsMoving(true);
 
@@ -179,18 +202,19 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
   }, [current.x, current.y, state.currentLocation]);
 
   return (
-    <section className="panel map-panel flex min-h-0 flex-col overflow-hidden">
-      <header className="panel-header shrink-0">
-        <div><p className="label">LIVE FIELD MAP · LEVANTINE COAST</p><h2 className="panel-title">Isla Solara</h2></div>
-        <div className="text-right"><p className="label">TEAM LOCATION</p><strong className="text-xs text-solara-coral">{isMoving ? `En route · ${current.name}` : current.name}</strong></div>
-      </header>
+    <section
+      className="panel map-panel flex min-h-0 flex-col overflow-hidden"
+      aria-label={arrivalActive
+        ? "Isla Solara live field map. Alex and Maya are approaching the airport from the northwest."
+        : `Isla Solara live field map. Team location: ${isMoving ? `en route to ${current.name}` : current.name}`}
+    >
       <div className="map-wrap min-h-0 flex-1">
         <div className="island-map relative overflow-hidden">
         <Image
           src={islandMapArt}
           alt="Aerial map of Isla Solara with coastal cities, highways, harbors, and airfields"
           fill
-          preload
+          loading="eager"
           sizes={MAP_IMAGE_SIZES}
           quality={90}
           className="island-map-art"
@@ -206,12 +230,30 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
               src={islandMapArt}
               alt=""
               fill
+              loading="eager"
               sizes={MAP_IMAGE_SIZES}
               quality={90}
               className="city-light-image"
             />
           </div>
         ))}
+
+        {arrivalActive && (
+          <div
+            className="aircraft-arrival"
+            style={{ animationDuration: `${AIRCRAFT_ARRIVAL_ANIMATION_MS}ms` }}
+            role="img"
+            aria-label="Aircraft approaching Solara Island Airport from the northwest"
+            onAnimationEnd={(event) => {
+              if (event.currentTarget === event.target) reportArrival();
+            }}
+          >
+            <span className="aircraft-arrival__sprite" aria-hidden="true">
+              <Image src={airplaneArrival} alt="" fill sizes="92px" loading="eager" />
+            </span>
+            <small>FINAL APPROACH</small>
+          </div>
+        )}
 
         <svg className="legacy-map-art absolute inset-0 h-full w-full" viewBox="0 0 1100 560" preserveAspectRatio="none" aria-hidden="true">
           <defs>
@@ -343,32 +385,66 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
           );
         })}
 
-        <div
-          className={`team-marker ${isMoving ? "is-moving" : ""}`}
-          style={{
-            left: `${markerPosition.x}%`,
-            top: `${markerPosition.y}%`,
-            transitionDuration: `${MAP_TRAVEL_ANIMATION_MS}ms`
-          }}
-          role="img"
-          aria-label={isMoving ? `${activeVehicle.name} driving to ${current.name}` : `${activeVehicle.name} at ${current.name}`}
-        >
-          <i className="marker-ring" />
-          <span className="vehicle-marker" aria-hidden="true">
-            <svg className="vehicle-marker-icon" viewBox="0 0 36 24">
-              <path className="vehicle-body" d="M4 12.5 7.5 7h15.2l5 5.5H32c1.1 0 2 .9 2 2v3H2v-3c0-1.1.9-2 2-2Z" />
-              <path className="vehicle-window" d="m10 8.5-2.2 4h8.7v-4Zm8.5 0v4h6.2l-3.5-4Z" />
-              <circle className="vehicle-wheel" cx="9" cy="18" r="3" />
-              <circle className="vehicle-wheel" cx="27" cy="18" r="3" />
-              <circle className="vehicle-hub" cx="9" cy="18" r="1" />
-              <circle className="vehicle-hub" cx="27" cy="18" r="1" />
-            </svg>
-          </span>
-          <small>{isMoving ? `Driving · ${current.shortName}` : activeVehicle.name}</small>
-        </div>
+        {!arrivalActive && (
+          <div
+            className={`team-marker ${isMoving ? "is-moving" : ""}`}
+            style={{
+              left: `${markerPosition.x}%`,
+              top: `${markerPosition.y}%`,
+              transitionDuration: `${MAP_TRAVEL_ANIMATION_MS}ms`
+            }}
+            role="img"
+            aria-label={isMoving ? `${activeVehicle.name} driving to ${current.name}` : `${activeVehicle.name} at ${current.name}`}
+          >
+            <i className="marker-ring" />
+            <span className="vehicle-heading" style={{ transform: `rotate(${vehicleHeading}deg)` }} aria-hidden="true">
+              <span className={`vehicle-marker vehicle-marker--${state.inventory.activeVehicle}`}>
+                <svg className="vehicle-marker-icon" viewBox="0 0 46 72">
+                  <defs>
+                    <linearGradient id="vehicle-paint" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0" stopColor="var(--vehicle-paint-light)" />
+                      <stop offset=".5" stopColor="var(--vehicle-paint)" />
+                      <stop offset="1" stopColor="var(--vehicle-paint-dark)" />
+                    </linearGradient>
+                    <linearGradient id="vehicle-glass" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="#b7d6d5" />
+                      <stop offset=".38" stopColor="#50787c" />
+                      <stop offset="1" stopColor="#142f36" />
+                    </linearGradient>
+                  </defs>
+                  <g className="vehicle-tyres">
+                    <rect x="3.5" y="15" width="7" height="15" rx="3" />
+                    <rect x="35.5" y="15" width="7" height="15" rx="3" />
+                    <rect x="3.5" y="46" width="7" height="16" rx="3" />
+                    <rect x="35.5" y="46" width="7" height="16" rx="3" />
+                  </g>
+                  <path className="vehicle-underbody" d="M17 3h12l7 7c2 2 3 6 3 11l1 35c0 9-5 15-12 15H18C11 71 6 65 6 56L7 21c0-5 1-9 3-11Z" />
+                  <path className="vehicle-body" d="M18 3.5h10l7 7.5c2 2.2 2.7 5.8 2.7 10.5l.8 34.5c.2 8.2-4.2 13.2-10.8 13.2h-9.4C11.7 69.2 7.3 64.2 7.5 56l.8-34.5c0-4.7.7-8.3 2.7-10.5Z" />
+                  <path className="vehicle-hood" d="M12 12.5Q23 4.5 34 12.5l1.4 13H10.6Z" />
+                  <path className="vehicle-windshield" d="m12.3 28 3-10.7Q23 13 30.7 17.3l3 10.7Z" />
+                  <path className="vehicle-roof" d="M13.2 30h19.6l-1.5 21H14.7Z" />
+                  <path className="vehicle-rear-window" d="m14.4 53 17.2.1-2.2 8.2H16.6Z" />
+                  <path className="vehicle-highlight" d="M13 13c3.5-4 7-5.6 10.6-5.8L19.5 66h-3.2c-3.9-1.3-5.7-4.8-5.5-10.1l.8-34.2c0-3.8.4-6.8 1.4-8.7Z" />
+                  <path className="vehicle-roof-rail" d="M15.7 31.5 17 50M30.3 31.5 29 50" />
+                  <path className="vehicle-mirror" d="m8.4 28-4 2v5l4-1.2m29.2-5.8 4 2v5l-4-1.2" />
+                  <path className="vehicle-bumper" d="M13 66.3h20M13 7.8h20" />
+                  <g className="vehicle-headlights">
+                    <path d="m12.7 9.5 5-2 .8 3.6-5.4 1.6Z" />
+                    <path d="m33.3 9.5-5-2-.8 3.6 5.4 1.6Z" />
+                  </g>
+                  <g className="vehicle-tail-lights">
+                    <rect x="11.2" y="62.5" width="5.5" height="3" rx="1" />
+                    <rect x="29.3" y="62.5" width="5.5" height="3" rx="1" />
+                  </g>
+                </svg>
+              </span>
+            </span>
+            <small>{isMoving ? `Driving · ${current.shortName}` : activeVehicle.name}</small>
+          </div>
+        )}
 
         <p className="sr-only" aria-live="polite">
-          {isMoving ? `${activeVehicle.name} is driving to ${current.name}.` : ""}
+          {arrivalActive ? "Aircraft on final approach to Solara Island Airport." : isMoving ? `${activeVehicle.name} is driving to ${current.name}.` : ""}
         </p>
 
         <div className="map-credit">

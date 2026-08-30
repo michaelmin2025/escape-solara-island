@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  answerHotelCall,
   attemptEscape,
   availableMissions,
+  beginHotelBriefing,
   choosePath,
+  completeAirportArrival,
   driveTeam,
   eatTogether,
   equipOutfit,
@@ -12,53 +13,195 @@ import {
   getObjective,
   missionCalculation,
   restTogether,
+  selectOpeningMission,
   startTeamMission
 } from "../game/engine";
 import { executeAutonomyPlan, planAutonomyStep, selectAutonomousMission } from "../game/autonomy";
+import { postCallLocations } from "../game/locations";
 import { createInitialState, DEADLINE_MINUTES, restoreState, TARGET_CASH } from "../game/state";
 
-function afterHotelCall(seed = 42) {
+function atHotelCall(seed = 42) {
   const state = createInitialState("Michael", seed);
+  const landing = completeAirportArrival(state);
+  assert.equal(landing.ok, true);
   const drive = driveTeam(state, "hotel");
   assert.equal(drive.ok, true);
   assert.equal(state.phase, "hotel-call");
-  const call = answerHotelCall(state);
-  assert.equal(call.ok, true);
   return state;
 }
 
-test("a new game begins at the airport with the hotel tutorial objective", () => {
+function legacyMissionReadyState(seed = 42) {
+  const state = atHotelCall(seed);
+  const briefing = beginHotelBriefing(state);
+  assert.equal(briefing.ok, true);
+  const selection = selectOpeningMission(state, "luxury-vehicle");
+  assert.equal(selection.ok, true);
+
+  // Preserve coverage of the established mission engine without treating the
+  // new player-authored story selection as an unlock for the legacy campaign.
+  state.phase = "playing";
+  state.objectiveUnlocked = true;
+  state.clientMet = true;
+  state.flags.objectiveUnlocked = true;
+  state.discoveredLocations = Array.from(new Set([...state.discoveredLocations, ...postCallLocations]));
+  if (!state.inventory.weapons.includes("pistol")) state.inventory.weapons.push("pistol");
+  state.characters.alex.weapon = "pistol";
+  return state;
+}
+
+test("a version 5 game begins on final approach to Solara Airport", () => {
   const state = createInitialState("Michael", 1);
+  assert.equal(state.version, 5);
+  assert.equal(state.phase, "arrival");
   assert.equal(state.currentLocation, "airport");
+  assert.equal(state.flags.airportArrivalComplete, false);
   assert.equal(state.objectiveUnlocked, false);
-  assert.equal(getObjective(state).title, "Reach Hotel Aster");
+  assert.equal(getObjective(state).title, "Land at Solara Airport");
   assert.deepEqual(state.discoveredLocations.sort(), ["airport", "hotel"]);
+  assert.match(state.dialogue[0].text, /northwest/i);
+  assert.equal(state.dialogue[0].id, 1);
+  assert.equal(state.dialogueSerial, 1);
+  assert.equal(state.dialogueReadId, 1);
 });
 
-test("airport-to-hotel runs as a structured tutorial and pauses for the handler call", () => {
+test("arrival blocks field actions until the aircraft lands", () => {
   const state = createInitialState("Nora", 2);
-  const result = startTeamMission(state, "airport-to-hotel");
+
+  const drive = driveTeam(state, "hotel");
+  assert.equal(drive.ok, false);
+  assert.match(drive.message, /aircraft must land/i);
+
+  const meal = eatTogether(state, "quick");
+  assert.equal(meal.ok, false);
+  assert.match(meal.message, /aircraft must land/i);
+
+  const mission = startTeamMission(state, "airport-to-hotel");
+  assert.equal(mission.ok, false);
+  assert.equal(state.currentLocation, "airport");
+  assert.equal(state.phase, "arrival");
+});
+
+test("completeAirportArrival lands once and opens the airport-to-hotel route", () => {
+  const state = createInitialState("Nora", 2);
+  const result = completeAirportArrival(state);
+
+  assert.equal(result.ok, true);
+  assert.match(result.message, /landed at Solara Island Airport/i);
+  assert.equal(state.phase, "playing");
+  assert.equal(state.flags.airportArrivalComplete, true);
+  assert.equal(state.currentLocation, "airport");
+  assert.deepEqual(state.dialogue.slice(-2).map((line) => line.speaker), ["ALEX", "MAYA"]);
+  assert.deepEqual(state.dialogue.slice(-2).map((line) => line.id), [2, 3]);
+  assert.equal(state.dialogueSerial, 3);
+  assert.equal(state.dialogueReadId, 1);
+  assert.match(state.dialogue.at(-2)?.text ?? "", /Hotel Aster/);
+  assert.match(state.dialogue.at(-1)?.text ?? "", /handler/i);
+
+  const dialogueLength = state.dialogue.length;
+  const duplicate = completeAirportArrival(state);
+  assert.equal(duplicate.ok, false);
+  assert.equal(state.dialogue.length, dialogueLength);
+});
+
+test("airport-to-hotel uses neutral check-in dialogue and pauses for the handler call", () => {
+  const state = createInitialState("Nora", 3);
+  completeAirportArrival(state);
+  const beforeMissionDialogue = state.dialogue.length;
+  const result = driveTeam(state, "hotel");
+
   assert.equal(result.outcome, "success");
   assert.equal(state.currentLocation, "hotel");
   assert.equal(state.flags.tutorialComplete, true);
   assert.equal(state.flags.hotelCallPending, true);
   assert.equal(state.phase, "hotel-call");
-  assert.ok(state.dialogue.some((line) => line.text.includes("bigger than I expected")));
+  assert.deepEqual(state.dialogue.slice(beforeMissionDialogue).map((line) => line.text), [
+    "The rental is ready. Hotel Aster is our only stop.",
+    "We check in, secure the room, and wait for the handler.",
+    "Keep it quiet on the way in.",
+    "Low profile until we know the assignment.",
+    "We're checked in. The room is secure.",
+    "Call the handler. We're ready for the options."
+  ]);
 });
 
-test("the hotel call unlocks the target, pistol, island, and three major jobs", () => {
-  const state = afterHotelCall();
-  assert.equal(state.objectiveUnlocked, true);
-  assert.equal(state.clientMet, true);
-  assert.equal(state.characters.alex.weapon, "pistol");
-  assert.ok(state.discoveredLocations.includes("marina"));
+test("beginHotelBriefing presents exactly three choices without legacy unlocks", () => {
+  const state = atHotelCall();
+  const result = beginHotelBriefing(state);
+
+  assert.equal(result.ok, true);
+  assert.equal(state.phase, "story-choice");
+  assert.equal(state.flags.hotelCallPending, false);
+  assert.deepEqual(state.storyChoice?.options, [
+    {
+      id: "luxury-vehicle",
+      label: "Steal a luxury vehicle",
+      description: "Take a high-end vehicle from a secure private property.",
+      available: true
+    },
+    {
+      id: "arms-deal",
+      label: "Interrupt an arms deal",
+      description: "Break up a weapons exchange before the transfer is completed.",
+      available: true
+    },
+    {
+      id: "drug-shipment",
+      label: "Intercept a drug shipment",
+      description: "Intercept a drug shipment before it leaves the docks.",
+      available: true
+    }
+  ]);
+  assert.equal(state.objectiveUnlocked, false);
+  assert.equal(state.clientMet, false);
+  assert.equal(state.flags.objectiveUnlocked, false);
+  assert.deepEqual(state.inventory.weapons, ["none"]);
+  assert.equal(state.characters.alex.weapon, "none");
+  assert.deepEqual([...state.discoveredLocations].sort(), ["airport", "hotel"]);
   const major = availableMissions(state, true).filter(({ mission }) => mission.kind === "major");
-  assert.equal(major.length, 3);
-  assert.ok(major.every(({ available }) => available));
+  assert.equal(major.length, 0);
+});
+
+test("selectOpeningMission records the choice and pauses before new story content", () => {
+  const state = atHotelCall(5);
+  beginHotelBriefing(state);
+  const result = selectOpeningMission(state, "arms-deal");
+
+  assert.equal(result.ok, true);
+  assert.equal(state.openingMission, "arms-deal");
+  assert.equal(state.storyChoice, undefined);
+  assert.equal(state.phase, "story-paused");
+  assert.equal(state.handler.directive, "Interrupt an arms deal selected. Await the full briefing.");
+  assert.equal(state.objectiveUnlocked, false);
+  assert.equal(state.clientMet, false);
+  assert.deepEqual(state.inventory.weapons, ["none"]);
+  assert.match(state.dialogue.at(-1)?.text ?? "", /Hold position/i);
+});
+
+test("autonomy waits through every player-directed opening pause", () => {
+  const state = createInitialState("Nora", 6);
+  const arrival = planAutonomyStep(state);
+  assert.equal(arrival.type, "wait");
+  assert.equal(arrival.label, "FINAL APPROACH");
+
+  completeAirportArrival(state);
+  driveTeam(state, "hotel");
+  const hotel = planAutonomyStep(state);
+  assert.equal(hotel.type, "wait");
+  assert.equal(hotel.label, "HOTEL CHECK-IN");
+
+  beginHotelBriefing(state);
+  const choice = planAutonomyStep(state);
+  assert.equal(choice.type, "wait");
+  assert.equal(choice.label, "AWAITING MISSION CHOICE");
+
+  selectOpeningMission(state, "drug-shipment");
+  const paused = planAutonomyStep(state);
+  assert.equal(paused.type, "wait");
+  assert.equal(paused.label, "AWAITING STORY DIRECTION");
 });
 
 test("major missions execute routine scenes and pause on a human decision", () => {
-  const state = afterHotelCall(99);
+  const state = legacyMissionReadyState(99);
   driveTeam(state, "marina");
   const result = startTeamMission(state, "marina-job");
   assert.equal(result.ok, true);
@@ -70,7 +213,7 @@ test("major missions execute routine scenes and pause on a human decision", () =
 });
 
 test("a handler choice resolves a major mission as success, partial, or failure", () => {
-  const state = afterHotelCall(7);
+  const state = legacyMissionReadyState(7);
   driveTeam(state, "marina");
   startTeamMission(state, "marina-job");
   const beforeTime = state.totalMinutes;
@@ -83,7 +226,7 @@ test("a handler choice resolves a major mission as success, partial, or failure"
 });
 
 test("mission order and branch state alter transparent success factors", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   const before = missionCalculation(state, "casino-job");
   state.flags.marinaContact = true;
   const after = missionCalculation(state, "casino-job");
@@ -92,7 +235,7 @@ test("mission order and branch state alter transparent success factors", () => {
 });
 
 test("operative outfits visibly factor into mission success", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   state.characters.alex.outfit = "summer";
   state.characters.maya.outfit = "summer";
   const summerPlan = missionCalculation(state, "casino-job");
@@ -105,7 +248,7 @@ test("operative outfits visibly factor into mission success", () => {
 });
 
 test("food and safe rest restore survival resources", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   state.characters.alex.hunger = 88;
   state.characters.maya.hunger = 84;
   state.characters.alex.energy = 18;
@@ -118,7 +261,7 @@ test("food and safe rest restore survival resources", () => {
 });
 
 test("autonomy purchases food using the least costly suitable meal", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   state.characters.alex.hunger = 89;
   state.characters.maya.hunger = 80;
   const fullMeal = planAutonomyStep(state);
@@ -135,7 +278,7 @@ test("autonomy purchases food using the least costly suitable meal", () => {
 });
 
 test("autonomy feeds the team before an unsafe full sleep", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   state.characters.alex.energy = 18;
   state.characters.maya.energy = 22;
   state.characters.alex.hunger = 55;
@@ -146,7 +289,7 @@ test("autonomy feeds the team before an unsafe full sleep", () => {
 });
 
 test("autonomy chooses, travels to, and starts a mission before waiting for the handler", () => {
-  const state = afterHotelCall(99);
+  const state = legacyMissionReadyState(99);
   assert.equal(selectAutonomousMission(state)?.id, "marina-job");
 
   let safety = 0;
@@ -164,7 +307,7 @@ test("autonomy chooses, travels to, and starts a mission before waiting for the 
 });
 
 test("autonomy never chooses a handler branch and requires an extraction order", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   driveTeam(state, "marina");
   startTeamMission(state, "marina-job");
   assert.equal(planAutonomyStep(state).type, "wait");
@@ -182,12 +325,8 @@ test("autonomy never chooses a handler branch and requires an extraction order",
   if (extraction.type === "drive") assert.equal(extraction.destination, "airfield");
 });
 
-test("autonomy pauses cleanly for hotel calls, manual mode, and terminal phases", () => {
-  const hotelCall = createInitialState("Nora", 4);
-  driveTeam(hotelCall, "hotel");
-  assert.equal(planAutonomyStep(hotelCall).type, "wait");
-
-  const manual = afterHotelCall();
+test("autonomy pauses cleanly for manual mode and terminal phases", () => {
+  const manual = legacyMissionReadyState();
   manual.autonomy.enabled = false;
   assert.equal(planAutonomyStep(manual).type, "wait");
 
@@ -197,7 +336,7 @@ test("autonomy pauses cleanly for hotel calls, manual mode, and terminal phases"
 });
 
 test("autonomy does not schedule sleep across the final window", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   state.totalMinutes = DEADLINE_MINUTES - 120;
   state.characters.alex.energy = 10;
   state.characters.maya.energy = 12;
@@ -207,7 +346,7 @@ test("autonomy does not schedule sleep across the final window", () => {
 });
 
 test("escape requires the fund, low heat, live team, airfield, and time", () => {
-  const state = afterHotelCall();
+  const state = legacyMissionReadyState();
   state.cash = TARGET_CASH;
   state.currentLocation = "airfield";
   state.characters.alex.heat = 2;
@@ -217,30 +356,82 @@ test("escape requires the fund, low heat, live team, airfield, and time", () => 
   assert.equal(escaped.outcome, "won");
   assert.equal(state.phase, "won");
 
-  const short = afterHotelCall();
+  const short = legacyMissionReadyState();
   short.currentLocation = "airfield";
   const denied = attemptEscape(short);
   assert.equal(denied.ok, false);
   assert.match(denied.message, /secure/);
 });
 
-test("versioned state survives a localStorage round trip", () => {
-  const state = afterHotelCall(77);
+test("version 5 state survives a localStorage round trip", () => {
+  const state = legacyMissionReadyState(77);
   state.handler.directive = "Keep heat below two stars.";
   const restored = restoreState(JSON.parse(JSON.stringify(state)));
   assert.equal(restored?.handler.directive, "Keep heat below two stars.");
-  assert.equal(restored?.version, 4);
+  assert.equal(restored?.version, 5);
   assert.equal(restored?.autonomy.enabled, true);
   assert.equal(restored?.objectiveUnlocked, true);
 });
 
-test("version 2 saves migrate to autonomous version 4 state with outfits", () => {
-  const legacy = JSON.parse(JSON.stringify(afterHotelCall())) as Record<string, unknown>;
+test("dialogue read cursor survives a version 5 round trip mid-conversation", () => {
+  const state = createInitialState("Nora", 88);
+  completeAirportArrival(state);
+  const firstCharacterId = state.dialogue.find((line) => line.speaker === "ALEX")?.id;
+  assert.equal(typeof firstCharacterId, "number");
+  state.dialogueReadId = firstCharacterId as number;
+
+  const restored = restoreState(JSON.parse(JSON.stringify(state)));
+  assert.equal(restored?.dialogueSerial, 3);
+  assert.equal(restored?.dialogueReadId, firstCharacterId);
+  assert.deepEqual(
+    restored?.dialogue
+      .filter((line) => (line.id ?? 0) > (restored.dialogueReadId ?? 0) && ["ALEX", "MAYA", "HANDLER"].includes(line.speaker))
+      .map((line) => line.id),
+    [3]
+  );
+});
+
+test("dialogue IDs keep new portrait lines unread after the 24-line history trims", () => {
+  const state = createInitialState("Nora", 89);
+  state.dialogue = Array.from({ length: 24 }, (_, index) => ({
+    id: index + 1,
+    speaker: "SYSTEM",
+    text: `Archived system line ${index + 1}`,
+    channel: "system" as const
+  }));
+  state.dialogueSerial = 24;
+  state.dialogueReadId = 24;
+
+  completeAirportArrival(state);
+
+  assert.equal(state.dialogue.length, 24);
+  assert.equal(state.dialogue[0].id, 3);
+  assert.deepEqual(state.dialogue.slice(-2).map((line) => line.id), [25, 26]);
+  assert.equal(state.dialogueSerial, 26);
+  assert.equal(state.dialogueReadId, 24);
+  assert.deepEqual(
+    state.dialogue
+      .filter((line) => (line.id ?? 0) > state.dialogueReadId && ["ALEX", "MAYA", "HANDLER"].includes(line.speaker))
+      .map((line) => line.id),
+    [25, 26]
+  );
+});
+
+test("version 2 saves migrate to autonomous version 5 state with outfits", () => {
+  const legacy = JSON.parse(JSON.stringify(legacyMissionReadyState())) as Record<string, unknown>;
   legacy.version = 2;
   delete legacy.autonomy;
+  delete legacy.dialogueSerial;
+  delete legacy.dialogueReadId;
+  (legacy.dialogue as Array<Record<string, unknown>>).forEach((line) => delete line.id);
   const restored = restoreState(legacy);
-  assert.equal(restored?.version, 4);
+  assert.equal(restored?.version, 5);
   assert.equal(restored?.autonomy.enabled, true);
+  assert.equal(restored?.phase, "story-paused");
+  assert.equal(restored?.flags.airportArrivalComplete, true);
   assert.equal(restored?.characters.alex.outfit, "casual");
   assert.equal(restored?.characters.maya.outfit, "summer");
+  assert.ok(restored?.dialogue.every((line) => typeof line.id === "number"));
+  assert.equal(restored?.dialogueSerial, restored?.dialogue.at(-1)?.id);
+  assert.equal(restored?.dialogueReadId, restored?.dialogueSerial);
 });

@@ -1,25 +1,18 @@
 import {
   addActivity,
-  answerHotelCall,
-  attemptEscape,
-  availableMissions,
-  choosePath,
   driveTeam,
   eatTogether,
   equipOutfit,
   equipWeapon,
-  getMissionAvailability,
-  missionCalculation,
   restTogether,
+  selectOpeningMission,
   setAutonomyMode,
   setHandlerDirective,
-  startTeamMission,
   switchVehicle,
   worldState
 } from "@/game/engine";
 import { planAutonomyStep } from "@/game/autonomy";
-import { missions } from "@/game/missions";
-import type { ActionResult, CharacterId, GameState, OutfitId, VehicleId, WeaponId } from "@/types/game";
+import type { ActionResult, CharacterId, GameState, OpeningMissionId, OutfitId, VehicleId, WeaponId } from "@/types/game";
 
 export interface GameBridge {
   getState: () => GameState;
@@ -55,48 +48,23 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
   const tools: ModelContextToolDefinition[] = [
     {
       name: "get_handler_state",
-      description: "Return the human handler's identity, strategic directive, and any decision waiting for them.",
+      description: "Return the human handler's identity, directive, autonomy setting, pending opening-story choice, and selected opening mission.",
       inputSchema: schema(),
       annotations: { readOnlyHint: true },
-      execute: () => inspect("Handler state inspected.", (state) => ({ handler: state.handler, autonomy: state.autonomy, decision: state.currentDecision }))
+      execute: () => inspect("Handler state inspected.", (state) => ({
+        handler: state.handler,
+        autonomy: state.autonomy,
+        phase: state.phase,
+        storyChoice: state.storyChoice,
+        openingMission: state.openingMission
+      }))
     },
     {
       name: "get_world_state",
-      description: "Return the complete strategic state: time, location, objective, team, cash, missions, and escape readiness.",
+      description: "Return the current game state, including phase, time, location, team, opening-story choice, and selected opening mission.",
       inputSchema: schema(),
       annotations: { readOnlyHint: true },
       execute: () => inspect("World state inspected.", worldState)
-    },
-    {
-      name: "get_available_missions",
-      description: "List major and side opportunities with requirements, outcomes, starting locations, and current success estimates.",
-      inputSchema: schema({ includeLocked: { type: "boolean" } }),
-      annotations: { readOnlyHint: true },
-      execute: (args) => inspect("Mission network inspected.", (state) => availableMissions(state, Boolean(args.includeLocked)).map(({ mission, available, reason }) => ({
-          id: mission.id,
-          title: mission.title,
-          summary: mission.summary,
-          kind: mission.kind,
-          risk: mission.risk,
-          startingLocation: mission.startingLocation,
-          estimatedHours: mission.estimatedHours,
-          baseReward: mission.baseReward,
-          available,
-          reason,
-          calculation: missionCalculation(state, mission.id)
-        })))
-    },
-    {
-      name: "inspect_mission",
-      description: "Inspect a single data-driven mission, its scene structure, availability, and transparent success factors.",
-      inputSchema: schema({ missionId: { type: "string", enum: Object.keys(missions) } }, ["missionId"]),
-      annotations: { readOnlyHint: true },
-      execute: (args) => inspect("Mission inspected.", (state) => {
-        const mission = missions[String(args.missionId)];
-        return mission
-          ? { mission, availability: getMissionAvailability(state, mission), calculation: missionCalculation(state, mission.id) }
-          : { error: "Unknown mission." };
-      })
     },
     {
       name: "drive_team",
@@ -105,28 +73,19 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
       execute: (args) => run("drive_team", args, (state) => driveTeam(state, String(args.destination)))
     },
     {
-      name: "answer_hotel_call",
-      description: "Answer the handler's call after the opening airport-to-hotel mission and unlock the $500,000 objective.",
-      inputSchema: schema(),
-      execute: (args) => run("answer_hotel_call", args, answerHotelCall)
-    },
-    {
-      name: "meet_major_client",
-      description: "Compatibility action for the opening client encounter. At Hotel Aster, this answers the brokered handler call and unlocks the main objective.",
-      inputSchema: schema(),
-      execute: (args) => run("meet_major_client", args, answerHotelCall)
-    },
-    {
-      name: "start_team_mission",
-      description: "Start a mission with Alex and Maya together. Routine scenes run automatically until a human decision or outcome.",
-      inputSchema: schema({ missionId: { type: "string", enum: Object.keys(missions) } }, ["missionId"]),
-      execute: (args) => run("start_team_mission", args, (state) => startTeamMission(state, String(args.missionId)))
-    },
-    {
-      name: "choose_path",
-      description: "Apply the human handler's choice to the paused mission and continue through structured scenes.",
-      inputSchema: schema({ option: { type: "string" } }, ["option"]),
-      execute: (args) => run("choose_path", args, (state) => choosePath(state, String(args.option)))
+      name: "select_opening_mission",
+      description: "Select one of the handler's three opening mission concepts. This records the choice and pauses before any mission briefing or execution.",
+      inputSchema: schema({
+        missionId: {
+          type: "string",
+          enum: ["luxury-vehicle", "arms-deal", "drug-shipment"]
+        }
+      }, ["missionId"]),
+      execute: (args) => run(
+        "select_opening_mission",
+        args,
+        (state) => selectOpeningMission(state, String(args.missionId) as OpeningMissionId)
+      )
     },
     {
       name: "eat_together",
@@ -179,16 +138,15 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
     },
     {
       name: "request_handler_decision",
-      description: "Return the consequential mission decision currently waiting for the human handler. This never chooses on their behalf.",
+      description: "Return the pending opening-story choice and any selected opening mission. This never chooses on the handler's behalf.",
       inputSchema: schema({ context: { type: "string" } }),
       annotations: { readOnlyHint: true },
-      execute: (args) => inspect("Handler decision inspected.", (state) => ({ context: args.context ?? null, decision: state.currentDecision }))
-    },
-    {
-      name: "attempt_escape",
-      description: "Attempt final extraction from Santoro Airstrip. Requires $500,000, both operatives alive, wanted status at 3 stars or lower, and time remaining.",
-      inputSchema: schema(),
-      execute: (args) => run("attempt_escape", args, attemptEscape)
+      execute: (args) => inspect("Handler decision inspected.", (state) => ({
+        context: args.context ?? null,
+        phase: state.phase,
+        storyChoice: state.storyChoice,
+        openingMission: state.openingMission
+      }))
     }
   ];
 

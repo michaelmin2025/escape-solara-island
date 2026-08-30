@@ -2,8 +2,8 @@ import type { MissionDefinition } from "@/types/game";
 
 export const airportToHotel: MissionDefinition = {
   id: "airport-to-hotel",
-  title: "First Light",
-  summary: "Drive Alex and Maya from Solara Island Airport to Hotel Aster and establish the operation.",
+  title: "Hotel Check-In",
+  summary: "Drive Alex and Maya from Solara Island Airport to Hotel Aster and check in with the handler.",
   contact: "Handler",
   startingLocation: "airport",
   estimatedHours: 1,
@@ -17,9 +17,8 @@ export const airportToHotel: MissionDefinition = {
       nextSceneId: "coastal-road",
       effects: { timeMinutes: 8 },
       lines: [
-        { speaker: "MAYA", text: "This place is bigger than I expected.", channel: "field" },
-        { speaker: "ALEX", text: "We get to the hotel, sleep, and figure things out tomorrow.", channel: "field" },
-        { speaker: "MAYA", text: "Assuming our contact doesn't have other plans.", channel: "field" }
+        { speaker: "ALEX", text: "The rental is ready. Hotel Aster is our only stop.", channel: "field" },
+        { speaker: "MAYA", text: "We check in, secure the room, and wait for the handler.", channel: "field" }
       ]
     },
     {
@@ -29,8 +28,8 @@ export const airportToHotel: MissionDefinition = {
       minutes: 52,
       nextSceneId: "hotel-arrival",
       lines: [
-        { speaker: "ALEX", text: "Turquoise water, white villas, and half the island watching the road.", channel: "field" },
-        { speaker: "MAYA", text: "Vacation paradise. Criminal logistics. Same coastline.", channel: "field" }
+        { speaker: "MAYA", text: "Keep it quiet on the way in.", channel: "field" },
+        { speaker: "ALEX", text: "Low profile until we know the assignment.", channel: "field" }
       ]
     },
     {
@@ -38,14 +37,14 @@ export const airportToHotel: MissionDefinition = {
       type: "phone_call",
       nextSceneId: "complete",
       lines: [
-        { speaker: "SYSTEM", text: "INCOMING ENCRYPTED CALL · HANDLER", channel: "system" },
-        { speaker: "ALEX", text: "We made it. Tell us why we're really here.", channel: "phone" }
+        { speaker: "ALEX", text: "We're checked in. The room is secure.", channel: "phone" },
+        { speaker: "MAYA", text: "Call the handler. We're ready for the options.", channel: "phone" }
       ]
     },
     { id: "complete", type: "reward", outcome: "success" }
   ],
   outcomes: {
-    success: { payout: 0, message: "Hotel Aster reached. The handler is calling.", flags: { tutorialComplete: true, hotelCallPending: true } },
+    success: { payout: 0, message: "Hotel Aster reached. The handler will call shortly.", flags: { tutorialComplete: true, hotelCallPending: true } },
     partial: { payout: 0, message: "Hotel Aster reached." },
     failure: { payout: 0, message: "The tutorial route failed." },
     aborted: { payout: 0, message: "The airport route was paused." }

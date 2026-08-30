@@ -153,8 +153,17 @@ function recoveryPlan(state: GameState, hours: number, reason: string): Autonomy
 
 export function planAutonomyStep(state: GameState): AutonomyPlan {
   if (!state.autonomy.enabled) return { type: "wait", actor: "team", label: "MANUAL CONTROL", reason: "Field autonomy is paused." };
+  if (state.phase === "arrival") {
+    return { type: "wait", actor: "team", label: "FINAL APPROACH", reason: "Alex and Maya are landing at Solara Island Airport." };
+  }
   if (state.phase === "hotel-call") {
-    return { type: "wait", actor: "team", label: "HANDLER CALL", reason: `Alex and Maya are waiting for ${state.handler.name} to deliver the mission objective.` };
+    return { type: "wait", actor: "team", label: "HOTEL CHECK-IN", reason: `Alex and Maya are waiting for ${state.handler.name}'s call at Hotel Aster.` };
+  }
+  if (state.phase === "story-choice" || state.storyChoice) {
+    return { type: "wait", actor: "team", label: "AWAITING MISSION CHOICE", reason: `${state.handler.name} must choose the team's first mission.` };
+  }
+  if (state.phase === "story-paused") {
+    return { type: "wait", actor: "team", label: "AWAITING STORY DIRECTION", reason: "Alex and Maya are holding at Hotel Aster until the next handler briefing." };
   }
   if (state.phase !== "playing") return { type: "wait", actor: "team", label: "OPERATION COMPLETE", reason: "There are no further autonomous actions." };
   if (state.currentDecision) {
