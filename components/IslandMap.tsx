@@ -1,5 +1,7 @@
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
+import islandMapArt from "@/public/assets/isla-solara-map-realistic.png";
 import { locations } from "@/game/locations";
 import { vehicles } from "@/game/vehicles";
 import type { GameState } from "@/types/game";
@@ -8,6 +10,15 @@ interface IslandMapProps {
   state: GameState;
   onDrive: (destination: string) => void;
 }
+
+const MAP_IMAGE_SIZES =
+  "(max-width: 860px) calc(100vw - 36px), (max-width: 1260px) calc(100vw - 306px), calc(100vw - 648px)";
+
+const CITY_LIGHTS = [
+  { id: "west", className: "city-light-west" },
+  { id: "east", className: "city-light-east" },
+  { id: "south", className: "city-light-south" }
+] as const;
 
 /*
  * Hand-drawn chart of Isla Solara — a Menorca-inspired silhouette:
@@ -170,12 +181,39 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
   return (
     <section className="panel map-panel flex min-h-0 flex-col overflow-hidden">
       <header className="panel-header shrink-0">
-        <div><p className="label">FIELD CHART · LEVANTINE COAST</p><h2 className="panel-title">Isla Solara</h2></div>
+        <div><p className="label">LIVE FIELD MAP · LEVANTINE COAST</p><h2 className="panel-title">Isla Solara</h2></div>
         <div className="text-right"><p className="label">TEAM LOCATION</p><strong className="text-xs text-solara-coral">{isMoving ? `En route · ${current.name}` : current.name}</strong></div>
       </header>
       <div className="map-wrap min-h-0 flex-1">
         <div className="island-map relative overflow-hidden">
-        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1100 560" preserveAspectRatio="none" aria-hidden="true">
+        <Image
+          src={islandMapArt}
+          alt="Aerial map of Isla Solara with coastal cities, highways, harbors, and airfields"
+          fill
+          preload
+          sizes={MAP_IMAGE_SIZES}
+          quality={90}
+          className="island-map-art"
+        />
+
+        {CITY_LIGHTS.map((light) => (
+          <div
+            key={light.id}
+            className={`city-light-layer ${light.className}`}
+            aria-hidden="true"
+          >
+            <Image
+              src={islandMapArt}
+              alt=""
+              fill
+              sizes={MAP_IMAGE_SIZES}
+              quality={90}
+              className="city-light-image"
+            />
+          </div>
+        ))}
+
+        <svg className="legacy-map-art absolute inset-0 h-full w-full" viewBox="0 0 1100 560" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <linearGradient id="landGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor="#4e7f5e" />
@@ -271,7 +309,7 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
         </svg>
 
         {/* compass rose — drawn in its own SVG so the stretching chart never oval it */}
-        <svg className="absolute left-[3%] top-[8%] aspect-square h-[24%]" viewBox="0 0 80 92" aria-hidden="true">
+        <svg className="legacy-map-art absolute left-[3%] top-[8%] aspect-square h-[24%]" viewBox="0 0 80 92" aria-hidden="true">
           <g opacity=".85">
             <circle cx="40" cy="52" r="26" fill="rgba(255,253,244,.25)" stroke="#16333d" strokeWidth="1.5" opacity=".55" />
             <path d="M40 30 L44 48 L62 52 L44 56 L40 74 L36 56 L18 52 L36 48Z" fill="#0a5468" opacity=".6" />
@@ -284,16 +322,22 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
         {Object.values(locations).map((location) => {
           const discovered = state.discoveredLocations.includes(location.id);
           const isCurrent = state.currentLocation === location.id;
+          const label = discovered
+            ? `${location.name}, ${location.description}`
+            : `${location.shortName}, undiscovered location`;
           return (
             <button
               key={location.id}
-              className={`map-node ${isCurrent ? "current" : ""} ${!discovered ? "locked" : ""}`}
+              type="button"
+              className={`map-node ${isCurrent ? "current" : ""} ${!discovered ? "locked" : ""} ${location.x > 82 ? "edge-right" : ""}`}
               style={{ left: `${location.x}%`, top: `${location.y}%` }}
               disabled={!discovered || blocked || isCurrent}
               onClick={() => onDrive(location.id)}
-              title={discovered ? `${location.name} · ${location.description}` : "Undiscovered location"}
+              title={label}
+              aria-label={label}
+              aria-current={isCurrent ? "location" : undefined}
             >
-              <i />
+              <i aria-hidden="true" />
               {discovered ? <span>{location.shortName}</span> : null}
             </button>
           );
@@ -320,11 +364,16 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
               <circle className="vehicle-hub" cx="27" cy="18" r="1" />
             </svg>
           </span>
-          <small aria-live="polite">{isMoving ? `Driving · ${current.shortName}` : activeVehicle.name}</small>
+          <small>{isMoving ? `Driving · ${current.shortName}` : activeVehicle.name}</small>
         </div>
 
-        <div className="absolute bottom-3 left-3 rounded border border-solara-ink/35 bg-[#fffdf4]/90 px-3 py-2 text-[7px] font-bold uppercase tracking-[.16em] text-solara-ink/60 backdrop-blur">
-          MENORCA-INSPIRED CARTOGRAPHY · FICTIONAL ISLAND
+        <p className="sr-only" aria-live="polite">
+          {isMoving ? `${activeVehicle.name} is driving to ${current.name}.` : ""}
+        </p>
+
+        <div className="map-credit">
+          <i aria-hidden="true" />
+          ISLA SOLARA · LIVE FIELD INTELLIGENCE
         </div>
         </div>
       </div>

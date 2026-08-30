@@ -6,6 +6,7 @@ import {
   choosePath,
   driveTeam,
   eatTogether,
+  equipOutfit,
   equipWeapon,
   getMissionAvailability,
   missionCalculation,
@@ -18,7 +19,7 @@ import {
 } from "@/game/engine";
 import { planAutonomyStep } from "@/game/autonomy";
 import { missions } from "@/game/missions";
-import type { ActionResult, CharacterId, GameState, VehicleId, WeaponId } from "@/types/game";
+import type { ActionResult, CharacterId, GameState, OutfitId, VehicleId, WeaponId } from "@/types/game";
 
 export interface GameBridge {
   getState: () => GameState;
@@ -146,6 +147,12 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
       execute: (args) => run("equip_weapon", args, (state) => equipWeapon(state, String(args.character) as CharacterId, String(args.weapon) as WeaponId))
     },
     {
+      name: "equip_outfit",
+      description: "Assign summer, casual, or formal mission cover to Alex or Maya. Outfit choice affects mission success estimates.",
+      inputSchema: schema({ character: { type: "string", enum: ["alex", "maya"] }, outfit: { type: "string", enum: ["summer", "casual", "formal"] } }, ["character", "outfit"]),
+      execute: (args) => run("equip_outfit", args, (state) => equipOutfit(state, String(args.character) as CharacterId, String(args.outfit) as OutfitId))
+    },
+    {
       name: "switch_vehicle",
       description: "Switch to an acquired vehicle before travel or a mission.",
       inputSchema: schema({ vehicle: { type: "string", enum: ["rental", "roadster", "suv", "grand-tourer"] } }, ["vehicle"]),
@@ -179,7 +186,7 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
     },
     {
       name: "attempt_escape",
-      description: "Attempt final extraction from Santoro Airstrip. Requires $500,000, both operatives alive, heat at 3 or lower, and time remaining.",
+      description: "Attempt final extraction from Santoro Airstrip. Requires $500,000, both operatives alive, wanted status at 3 stars or lower, and time remaining.",
       inputSchema: schema(),
       execute: (args) => run("attempt_escape", args, attemptEscape)
     }

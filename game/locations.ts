@@ -10,7 +10,7 @@ export interface LocationDefinition {
 
 export const locations: Record<string, LocationDefinition> = {
   "west-port": {
-    id: "west-port", name: "Cala Vela", shortName: "West Port", x: 8, y: 51, district: "Historic West",
+    id: "west-port", name: "Cala Vela", shortName: "West Port", x: 12, y: 52, district: "Historic West",
     description: "A sandstone port threaded with alleys too narrow for a clean getaway."
   },
   "hidden-dock": {
@@ -18,11 +18,11 @@ export const locations: Record<string, LocationDefinition> = {
     description: "A limestone inlet hidden beneath pine-covered cliffs."
   },
   marina: {
-    id: "marina", name: "Port Lucero", shortName: "Marina", x: 24, y: 69, district: "Southwest Marina",
+    id: "marina", name: "Port Lucero", shortName: "Marina", x: 43, y: 74, district: "Southwest Marina",
     description: "White yachts, blue water, and deals made below deck."
   },
   airfield: {
-    id: "airfield", name: "Santoro Airstrip", shortName: "Final Airfield", x: 38, y: 42, district: "Rural Interior",
+    id: "airfield", name: "Santoro Airstrip", shortName: "Final Airfield", x: 32, y: 35, district: "Rural Interior",
     description: "A private runway among dry-stone fields—the final way out."
   },
   "north-cliffs": {
@@ -42,7 +42,7 @@ export const locations: Record<string, LocationDefinition> = {
     description: "A whitewashed resort where the handler's first call changes everything."
   },
   airport: {
-    id: "airport", name: "Solara Island Airport", shortName: "Airport", x: 75, y: 65, district: "Southeast Corridor",
+    id: "airport", name: "Solara Island Airport", shortName: "Airport", x: 84, y: 66, district: "Southeast Corridor",
     description: "A small Mediterranean terminal surrounded by pale roads and scrub."
   },
   resort: {
@@ -50,11 +50,11 @@ export const locations: Record<string, LocationDefinition> = {
     description: "Turquoise coves above a casino built for people who never ask the price."
   },
   industrial: {
-    id: "industrial", name: "Cinderworks Harbor", shortName: "Industrial Harbor", x: 86, y: 38, district: "Eastern Harbor",
+    id: "industrial", name: "Cinderworks Harbor", shortName: "Industrial Harbor", x: 87, y: 62, district: "Eastern Harbor",
     description: "Cranes, warehouses, and the island's most dangerous recovery contracts."
   },
   "east-city": {
-    id: "east-city", name: "Puerto Nacar", shortName: "East City", x: 94, y: 52, district: "Eastern Capital",
+    id: "east-city", name: "Puerto Nacar", shortName: "East City", x: 91, y: 49, district: "Eastern Capital",
     description: "A busy harbor city where police attention travels faster than money."
   }
 };
