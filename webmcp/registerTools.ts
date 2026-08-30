@@ -10,11 +10,13 @@ import {
   getMissionAvailability,
   missionCalculation,
   restTogether,
+  setAutonomyMode,
   setHandlerDirective,
   startTeamMission,
   switchVehicle,
   worldState
 } from "@/game/engine";
+import { planAutonomyStep } from "@/game/autonomy";
 import { missions } from "@/game/missions";
 import type { ActionResult, CharacterId, GameState, VehicleId, WeaponId } from "@/types/game";
 
@@ -44,30 +46,32 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
     return response(result.message, result, state);
   };
 
+  const inspect = (message: string, data: (state: GameState) => unknown) => {
+    const state = bridge.getState();
+    return response(message, { ok: true, message, data: data(state) }, state);
+  };
+
   const tools: ModelContextToolDefinition[] = [
     {
       name: "get_handler_state",
       description: "Return the human handler's identity, strategic directive, and any decision waiting for them.",
       inputSchema: schema(),
       annotations: { readOnlyHint: true },
-      execute: (args) => run("get_handler_state", args, (state) => ({ ok: true, message: "Handler state inspected.", data: { handler: state.handler, decision: state.currentDecision } }))
+      execute: () => inspect("Handler state inspected.", (state) => ({ handler: state.handler, autonomy: state.autonomy, decision: state.currentDecision }))
     },
     {
       name: "get_world_state",
       description: "Return the complete strategic state: time, location, objective, team, cash, missions, and escape readiness.",
       inputSchema: schema(),
       annotations: { readOnlyHint: true },
-      execute: (args) => run("get_world_state", args, (state) => ({ ok: true, message: "World state inspected.", data: worldState(state) }))
+      execute: () => inspect("World state inspected.", worldState)
     },
     {
       name: "get_available_missions",
       description: "List major and side opportunities with requirements, outcomes, starting locations, and current success estimates.",
       inputSchema: schema({ includeLocked: { type: "boolean" } }),
       annotations: { readOnlyHint: true },
-      execute: (args) => run("get_available_missions", args, (state) => ({
-        ok: true,
-        message: "Mission network inspected.",
-        data: availableMissions(state, Boolean(args.includeLocked)).map(({ mission, available, reason }) => ({
+      execute: (args) => inspect("Mission network inspected.", (state) => availableMissions(state, Boolean(args.includeLocked)).map(({ mission, available, reason }) => ({
           id: mission.id,
           title: mission.title,
           summary: mission.summary,
@@ -79,19 +83,18 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
           available,
           reason,
           calculation: missionCalculation(state, mission.id)
-        }))
-      }))
+        })))
     },
     {
       name: "inspect_mission",
       description: "Inspect a single data-driven mission, its scene structure, availability, and transparent success factors.",
       inputSchema: schema({ missionId: { type: "string", enum: Object.keys(missions) } }, ["missionId"]),
       annotations: { readOnlyHint: true },
-      execute: (args) => run("inspect_mission", args, (state) => {
+      execute: (args) => inspect("Mission inspected.", (state) => {
         const mission = missions[String(args.missionId)];
         return mission
-          ? { ok: true, message: `${mission.title} inspected.`, data: { mission, availability: getMissionAvailability(state, mission), calculation: missionCalculation(state, mission.id) } }
-          : { ok: false, message: "Unknown mission." };
+          ? { mission, availability: getMissionAvailability(state, mission), calculation: missionCalculation(state, mission.id) }
+          : { error: "Unknown mission." };
       })
     },
     {
@@ -155,11 +158,24 @@ export async function registerGameTools(bridge: GameBridge): Promise<{ abort: ()
       execute: (args) => run("set_handler_directive", args, (state) => setHandlerDirective(state, String(args.directive)))
     },
     {
+      name: "get_agent_intention",
+      description: "Return Alex and Maya's next autonomous action or the handler decision that is blocking them.",
+      inputSchema: schema(),
+      annotations: { readOnlyHint: true },
+      execute: () => inspect("Field-team intention inspected.", planAutonomyStep)
+    },
+    {
+      name: "set_agent_autonomy",
+      description: "Enable or pause Alex and Maya's autonomous routine planning. Consequential decisions always remain with the human handler.",
+      inputSchema: schema({ enabled: { type: "boolean" } }, ["enabled"]),
+      execute: (args) => run("set_agent_autonomy", args, (state) => setAutonomyMode(state, Boolean(args.enabled)))
+    },
+    {
       name: "request_handler_decision",
       description: "Return the consequential mission decision currently waiting for the human handler. This never chooses on their behalf.",
       inputSchema: schema({ context: { type: "string" } }),
       annotations: { readOnlyHint: true },
-      execute: (args) => run("request_handler_decision", args, (state) => ({ ok: true, message: state.currentDecision ? "A human decision is pending." : "No human decision is pending.", data: { context: args.context ?? null, decision: state.currentDecision } }))
+      execute: (args) => inspect("Handler decision inspected.", (state) => ({ context: args.context ?? null, decision: state.currentDecision }))
     },
     {
       name: "attempt_escape",

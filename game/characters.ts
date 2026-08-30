@@ -1,4 +1,26 @@
-import type { CharacterState } from "@/types/game";
+import type { CharacterId, CharacterState, WeaponId } from "@/types/game";
+
+export interface OperativeProfile {
+  id: CharacterId;
+  planningRole: string;
+  priorities: string[];
+  weaponPreference: WeaponId[];
+}
+
+export const operativeProfiles: Record<CharacterId, OperativeProfile> = {
+  alex: {
+    id: "alex",
+    planningRole: "movement, timing, and physical readiness",
+    priorities: ["speed", "energy", "vehicle", "extraction"],
+    weaponPreference: ["rifle", "shotgun", "smg", "pistol", "none"]
+  },
+  maya: {
+    id: "maya",
+    planningRole: "risk, supplies, and social cover",
+    priorities: ["heat", "health", "cash", "negotiation"],
+    weaponPreference: ["smg", "pistol", "rifle", "shotgun", "none"]
+  }
+};
 
 export function createCharacters(): Record<"alex" | "maya", CharacterState> {
   return {

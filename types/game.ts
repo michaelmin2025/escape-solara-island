@@ -9,6 +9,10 @@ export interface HandlerState {
   directive: string;
 }
 
+export interface AutonomyState {
+  enabled: boolean;
+}
+
 export interface CharacterState {
   id: CharacterId;
   name: string;
@@ -30,7 +34,7 @@ export interface ActivityEntry {
   id: string;
   day: number;
   time: string;
-  kind: "webmcp" | "travel" | "dialogue" | "decision" | "success" | "partial" | "danger" | "recovery" | "system";
+  kind: "webmcp" | "autonomy" | "travel" | "dialogue" | "decision" | "success" | "partial" | "danger" | "recovery" | "system";
   title: string;
   detail: string;
 }
@@ -148,8 +152,9 @@ export interface EndingState {
 }
 
 export interface GameState {
-  version: 2;
+  version: 3;
   handler: HandlerState;
+  autonomy: AutonomyState;
   totalMinutes: number;
   cash: number;
   targetCash: number;

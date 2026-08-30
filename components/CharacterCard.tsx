@@ -1,5 +1,13 @@
+import Image from "next/image";
+import alexPortrait from "@/public/assets/portraits/alex.png";
+import mayaPortrait from "@/public/assets/portraits/maya.png";
 import { weapons } from "@/game/vehicles";
-import type { CharacterState, WeaponId } from "@/types/game";
+import type { CharacterId, CharacterState, WeaponId } from "@/types/game";
+
+const portraits: Record<CharacterId, typeof alexPortrait> = {
+  alex: alexPortrait,
+  maya: mayaPortrait
+};
 
 interface CharacterCardProps {
   character: CharacterState;
@@ -29,8 +37,14 @@ export function CharacterCard({ character, availableWeapons, onEquip }: Characte
   return (
     <article className="border-b border-dashed border-solara-ink/25 p-4 last:border-b-0">
       <div className="mb-4 flex items-center gap-3">
-        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-solara-ink/35 font-display text-lg font-bold text-white ${character.id === "alex" ? "bg-gradient-to-br from-solara-sun to-solara-coral" : "bg-gradient-to-br from-solara-lagoon to-solara-deep"}`}>
-          {character.name[0]}
+        <div className={`relative h-11 w-11 shrink-0 overflow-hidden rounded-full border-2 shadow-sm ${character.id === "alex" ? "border-solara-coral/70" : "border-solara-lagoon/80"}`}>
+          <Image
+            src={portraits[character.id]}
+            alt=""
+            fill
+            sizes="44px"
+            className="scale-[1.16] object-cover object-[50%_32%]"
+          />
         </div>
         <div className="min-w-0 flex-1">
           <p className="label">FIELD OPERATIVE</p>

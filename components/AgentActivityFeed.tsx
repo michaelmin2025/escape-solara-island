@@ -2,6 +2,7 @@ import type { ActivityEntry } from "@/types/game";
 
 const colors: Record<ActivityEntry["kind"], string> = {
   webmcp: "text-solara-foam",
+  autonomy: "text-cyan-200",
   travel: "text-sky-300",
   dialogue: "text-white/80",
   decision: "text-solara-sun",

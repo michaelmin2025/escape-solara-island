@@ -13,7 +13,8 @@ import {
   restTogether,
   startTeamMission
 } from "../game/engine";
-import { createInitialState, restoreState, TARGET_CASH } from "../game/state";
+import { executeAutonomyPlan, planAutonomyStep, selectAutonomousMission } from "../game/autonomy";
+import { createInitialState, DEADLINE_MINUTES, restoreState, TARGET_CASH } from "../game/state";
 
 function afterHotelCall(seed = 42) {
   const state = createInitialState("Michael", seed);
@@ -102,6 +103,95 @@ test("food and safe rest restore survival resources", () => {
   assert.ok(state.characters.alex.energy >= 90);
 });
 
+test("autonomy purchases food using the least costly suitable meal", () => {
+  const state = afterHotelCall();
+  state.characters.alex.hunger = 89;
+  state.characters.maya.hunger = 80;
+  const fullMeal = planAutonomyStep(state);
+  assert.equal(fullMeal.type, "eat");
+  if (fullMeal.type === "eat") assert.equal(fullMeal.meal, "restaurant");
+
+  state.cash = 50;
+  const roadMeal = planAutonomyStep(state);
+  assert.equal(roadMeal.type, "eat");
+  if (roadMeal.type === "eat") assert.equal(roadMeal.meal, "quick");
+  executeAutonomyPlan(state, roadMeal);
+  assert.equal(state.cash, 30);
+  assert.ok(state.activityLog[0].title.includes("MAYA"));
+});
+
+test("autonomy feeds the team before an unsafe full sleep", () => {
+  const state = afterHotelCall();
+  state.characters.alex.energy = 18;
+  state.characters.maya.energy = 22;
+  state.characters.alex.hunger = 55;
+  state.characters.maya.hunger = 52;
+  const plan = planAutonomyStep(state);
+  assert.equal(plan.type, "eat");
+  assert.match(plan.reason, /before the team sleeps/);
+});
+
+test("autonomy chooses, travels to, and starts a mission before waiting for the handler", () => {
+  const state = afterHotelCall(99);
+  assert.equal(selectAutonomousMission(state)?.id, "marina-job");
+
+  let safety = 0;
+  while (!state.currentDecision && safety < 8) {
+    const plan = planAutonomyStep(state);
+    assert.notEqual(plan.type, "wait");
+    executeAutonomyPlan(state, plan);
+    safety += 1;
+  }
+
+  assert.equal(state.currentDecision?.missionId, "marina-job");
+  const waiting = planAutonomyStep(state);
+  assert.equal(waiting.type, "wait");
+  assert.match(waiting.reason, /consequential decision/);
+});
+
+test("autonomy never chooses a handler branch and requires an extraction order", () => {
+  const state = afterHotelCall();
+  driveTeam(state, "marina");
+  startTeamMission(state, "marina-job");
+  assert.equal(planAutonomyStep(state).type, "wait");
+
+  state.currentDecision = undefined;
+  state.activeMission = undefined;
+  state.cash = TARGET_CASH;
+  const holding = planAutonomyStep(state);
+  assert.equal(holding.type, "wait");
+  assert.match(holding.reason, /order extraction/);
+
+  state.handler.directive = "Extract now. Get off the island.";
+  const extraction = planAutonomyStep(state);
+  assert.equal(extraction.type, "drive");
+  if (extraction.type === "drive") assert.equal(extraction.destination, "airfield");
+});
+
+test("autonomy pauses cleanly for hotel calls, manual mode, and terminal phases", () => {
+  const hotelCall = createInitialState("Nora", 4);
+  driveTeam(hotelCall, "hotel");
+  assert.equal(planAutonomyStep(hotelCall).type, "wait");
+
+  const manual = afterHotelCall();
+  manual.autonomy.enabled = false;
+  assert.equal(planAutonomyStep(manual).type, "wait");
+
+  manual.phase = "won";
+  manual.autonomy.enabled = true;
+  assert.equal(planAutonomyStep(manual).type, "wait");
+});
+
+test("autonomy does not schedule sleep across the final window", () => {
+  const state = afterHotelCall();
+  state.totalMinutes = DEADLINE_MINUTES - 120;
+  state.characters.alex.energy = 10;
+  state.characters.maya.energy = 12;
+  const plan = planAutonomyStep(state);
+  assert.equal(plan.type, "wait");
+  assert.match(plan.reason, /cross the final window/);
+});
+
 test("escape requires the fund, low heat, live team, airfield, and time", () => {
   const state = afterHotelCall();
   state.cash = TARGET_CASH;
@@ -125,6 +215,16 @@ test("versioned state survives a localStorage round trip", () => {
   state.handler.directive = "Keep heat below two stars.";
   const restored = restoreState(JSON.parse(JSON.stringify(state)));
   assert.equal(restored?.handler.directive, "Keep heat below two stars.");
-  assert.equal(restored?.version, 2);
+  assert.equal(restored?.version, 3);
+  assert.equal(restored?.autonomy.enabled, true);
   assert.equal(restored?.objectiveUnlocked, true);
+});
+
+test("version 2 saves migrate to autonomous version 3 state", () => {
+  const legacy = JSON.parse(JSON.stringify(afterHotelCall())) as Record<string, unknown>;
+  legacy.version = 2;
+  delete legacy.autonomy;
+  const restored = restoreState(legacy);
+  assert.equal(restored?.version, 3);
+  assert.equal(restored?.autonomy.enabled, true);
 });

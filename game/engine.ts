@@ -426,6 +426,22 @@ export function setHandlerDirective(state: GameState, directive: string): Action
   return { ok: true, message: "Directive relayed to Alex and Maya." };
 }
 
+export function setAutonomyMode(state: GameState, enabled: boolean): ActionResult {
+  state.autonomy.enabled = enabled;
+  addActivity(
+    state,
+    "autonomy",
+    enabled ? "FIELD AUTONOMY ENABLED" : "FIELD AUTONOMY PAUSED",
+    enabled
+      ? "Alex and Maya will manage routine actions until a consequential handler decision is required."
+      : `${state.handler.name} has taken direct control of routine actions.`
+  );
+  return {
+    ok: true,
+    message: enabled ? "Alex and Maya resumed autonomous operations." : "Autonomous operations paused."
+  };
+}
+
 export function escapeReadiness(state: GameState) {
   const avg = teamAverages(state);
   return {
@@ -470,6 +486,7 @@ export function getObjective(state: GameState) {
 export function worldState(state: GameState) {
   return {
     handler: state.handler,
+    autonomy: state.autonomy,
     day: dayOf(state),
     time: formatClock(state),
     timeRemaining: formatDuration(timeRemaining(state)),

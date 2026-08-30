@@ -20,18 +20,21 @@ import {
   formatMoney,
   getObjective,
   restTogether,
+  setAutonomyMode,
   setHandlerDirective,
   startTeamMission,
   switchVehicle,
   teamAverages,
   timeRemaining
 } from "@/game/engine";
+import { autonomyFingerprint, executeAutonomyPlan, planAutonomyStep } from "@/game/autonomy";
 import { createInitialState, restoreState } from "@/game/state";
 import { vehicles } from "@/game/vehicles";
 import { registerGameTools } from "@/webmcp/registerTools";
 import type { ActionResult, GameState, VehicleId, WeaponId } from "@/types/game";
 
-const STORAGE_KEY = "escape-solara-island:v2";
+const STORAGE_KEY = "escape-solara-island:v3";
+const LEGACY_STORAGE_KEY = "escape-solara-island:v2";
 
 function Heat({ value }: { value: number }) {
   const heat = Math.min(5, Math.max(0, Math.round(value)));
@@ -124,11 +127,14 @@ export function Game() {
   const [hydrated, setHydrated] = useState(false);
   const [toast, setToast] = useState("");
   const [webMcpStatus, setWebMcpStatus] = useState("WebMCP waiting for operation");
+  const [autonomyStatus, setAutonomyStatus] = useState("Alex and Maya are assessing the field.");
   const stateRef = useRef<GameState | null>(null);
+  const autonomyBurstRef = useRef(0);
+  const lastAutonomyFingerprintRef = useRef("");
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
       const restored = stored ? restoreState(JSON.parse(stored)) : null;
       if (restored) {
         stateRef.current = restored;
@@ -181,11 +187,40 @@ export function Game() {
     };
   }, [hasState, perform]);
 
+  const resetAutonomyGuard = useCallback(() => {
+    autonomyBurstRef.current = 0;
+    lastAutonomyFingerprintRef.current = "";
+  }, []);
+
   const act = useCallback((action: (draft: GameState) => ActionResult) => {
+    resetAutonomyGuard();
     const { result } = perform(action);
     setToast(result.message);
     return result;
-  }, [perform]);
+  }, [perform, resetAutonomyGuard]);
+
+  useEffect(() => {
+    if (!state) return;
+    const plan = planAutonomyStep(state);
+    setAutonomyStatus(plan.reason);
+    if (plan.type === "wait") return;
+    if (autonomyBurstRef.current >= 12) {
+      setAutonomyStatus("Autonomy paused after 12 routine actions. Relay a directive or take one manual action to continue.");
+      return;
+    }
+    const fingerprint = autonomyFingerprint(state, plan);
+    if (lastAutonomyFingerprintRef.current === fingerprint) {
+      setAutonomyStatus("Autonomy stopped before repeating the same unsuccessful action.");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      lastAutonomyFingerprintRef.current = fingerprint;
+      autonomyBurstRef.current += 1;
+      const { result } = perform((draft) => executeAutonomyPlan(draft, plan));
+      setToast(result.message);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [perform, state]);
 
   function begin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -193,14 +228,18 @@ export function Game() {
     const next = createInitialState(String(form.get("handler") ?? "Handler"));
     stateRef.current = next;
     setState(next);
+    resetAutonomyGuard();
     setToast(`${next.handler.name}, Alex and Maya are waiting at the airport.`);
   }
 
   function reset() {
     if (!window.confirm("Reset the operation and erase the current six-day run?")) return;
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     stateRef.current = null;
     setState(null);
+    resetAutonomyGuard();
+    setAutonomyStatus("Alex and Maya are assessing the field.");
     setWebMcpStatus("WebMCP waiting for operation");
   }
 
@@ -252,14 +291,18 @@ export function Game() {
 
       <div className="game-grid">
         <aside className="flex min-h-0 flex-col gap-3">
-          <section className="panel min-h-0 flex-1 overflow-hidden">
-            <header className="panel-header"><div><p className="label">FIELD TEAM</p><h2 className="panel-title">Alex + Maya</h2></div><span className="badge">TOGETHER</span></header>
-            <div className="grid grid-cols-3 border-b border-dashed border-solara-ink/25 bg-solara-sand/30 text-center text-[7px] font-bold tracking-wider text-solara-ink/50">
+          <section className="panel flex min-h-0 flex-1 flex-col overflow-hidden">
+            <header className="panel-header shrink-0"><div><p className="label">FIELD TEAM</p><h2 className="panel-title">Alex + Maya</h2></div><button type="button" aria-pressed={state.autonomy.enabled} onClick={() => act((draft) => setAutonomyMode(draft, !draft.autonomy.enabled))} className={`badge transition-colors ${state.autonomy.enabled ? "border-emerald-700/45 bg-emerald-700/10 text-emerald-800" : "border-solara-ink/25 bg-transparent text-solara-ink/45"}`}>{state.autonomy.enabled ? "AUTO · ON" : "AUTO · OFF"}</button></header>
+            <div className="grid shrink-0 grid-cols-3 border-b border-dashed border-solara-ink/25 bg-solara-sand/30 text-center text-[7px] font-bold tracking-wider text-solara-ink/50">
               <span className="border-r border-dashed border-solara-ink/25 p-2">HEALTH<strong className="mt-1 block text-[10px] text-solara-ink/85">{Math.round(averages.health)}</strong></span>
               <span className="border-r border-dashed border-solara-ink/25 p-2">ENERGY<strong className="mt-1 block text-[10px] text-solara-ink/85">{Math.round(averages.energy)}</strong></span>
               <span className="p-2">HEAT<strong className="mt-1 block text-[9px]"><Heat value={averages.heat} /></strong></span>
             </div>
-            <div className="max-h-[calc(100%-95px)] overflow-y-auto scrollbar-thin">
+            <div className="flex shrink-0 items-start gap-2 border-b border-dashed border-solara-ink/20 bg-white/35 px-3 py-2">
+              <i className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${state.autonomy.enabled ? "bg-emerald-500 shadow-[0_0_7px_#34d399]" : "bg-solara-ink/25"}`} />
+              <p className="min-w-0 text-[8px] leading-3.5 text-solara-ink/50"><strong className="block text-[7px] font-black tracking-widest text-solara-pine">{state.autonomy.enabled ? "FIELD AI ACTIVE" : "MANUAL ROUTINE CONTROL"}</strong><span className="line-clamp-2">{autonomyStatus}</span></p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
               {Object.values(state.characters).map((character) => (
                 <CharacterCard key={character.id} character={character} availableWeapons={state.inventory.weapons} onEquip={(weapon) => act((draft) => equipWeapon(draft, character.id, weapon as WeaponId))} />
               ))}
@@ -268,6 +311,7 @@ export function Game() {
 
           <section className="panel shrink-0 p-3">
             <p className="label">SUPPLY POST</p>
+            <p className="mt-1 text-[8px] leading-3 text-solara-ink/45">With autonomy on, Maya purchases meals and Alex schedules recovery when the team needs it.</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button disabled={blocked} onClick={() => act((draft) => eatTogether(draft, "quick"))} className="small-action"><strong>Quick meal</strong><small>$20 · 35m</small></button>
               <button disabled={blocked} onClick={() => act((draft) => eatTogether(draft, "restaurant"))} className="small-action"><strong>Restaurant</strong><small>$100 · 1h</small></button>

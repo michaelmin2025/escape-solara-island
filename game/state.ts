@@ -9,10 +9,13 @@ export const DEADLINE_MINUTES = 6 * 24 * 60;
 export function createInitialState(handlerName: string, seed = Date.now()): GameState {
   const name = handlerName.trim().slice(0, 28) || "Handler";
   return {
-    version: 2,
+    version: 3,
     handler: {
       name,
       directive: "Get Alex and Maya to the hotel. Keep them together."
+    },
+    autonomy: {
+      enabled: true
     },
     totalMinutes: START_MINUTES,
     cash: 2500,
@@ -58,7 +61,11 @@ export function createInitialState(handlerName: string, seed = Date.now()): Game
 
 export function restoreState(value: unknown): GameState | null {
   if (!value || typeof value !== "object") return null;
-  const candidate = value as Partial<GameState>;
-  if (candidate.version !== 2 || !candidate.handler || !candidate.characters || !candidate.inventory) return null;
-  return candidate as GameState;
+  const candidate = value as Partial<GameState> & { version?: number };
+  if (![2, 3].includes(candidate.version ?? 0) || !candidate.handler || !candidate.characters || !candidate.inventory) return null;
+  return {
+    ...candidate,
+    version: 3,
+    autonomy: candidate.autonomy ?? { enabled: true }
+  } as GameState;
 }
