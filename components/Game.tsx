@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AgentActivityFeed } from "./AgentActivityFeed";
 import { CharacterCard } from "./CharacterCard";
 import { DialoguePanel } from "./DialoguePanel";
-import { IslandMap } from "./IslandMap";
+import { IslandMap, MAP_TRAVEL_ANIMATION_MS } from "./IslandMap";
 import { MissionPanel } from "./MissionPanel";
 import {
   answerHotelCall,
@@ -128,6 +128,7 @@ export function Game() {
   const [toast, setToast] = useState("");
   const [webMcpStatus, setWebMcpStatus] = useState("WebMCP waiting for operation");
   const [autonomyStatus, setAutonomyStatus] = useState("Alex and Maya are assessing the field.");
+  const [hotelCallVisible, setHotelCallVisible] = useState(false);
   const stateRef = useRef<GameState | null>(null);
   const autonomyBurstRef = useRef(0);
   const lastAutonomyFingerprintRef = useRef("");
@@ -157,6 +158,16 @@ export function Game() {
     const timer = window.setTimeout(() => setToast(""), 4200);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (state?.phase !== "hotel-call") {
+      setHotelCallVisible(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setHotelCallVisible(true), MAP_TRAVEL_ANIMATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [state?.phase]);
 
   const perform = useCallback((action: (draft: GameState) => ActionResult) => {
     if (!stateRef.current) throw new Error("No active operation.");
@@ -358,7 +369,7 @@ export function Game() {
         <button className="btn-ghost px-5 text-[8px] font-black tracking-widest">RELAY DIRECTIVE ↗</button>
       </form>
 
-      {state.phase === "hotel-call" && (
+      {state.phase === "hotel-call" && hotelCallVisible && (
         <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="hotel-call-title">
           <section className="modal-card max-w-xl text-center">
             <div className="modal-card-body">

@@ -601,28 +601,61 @@ select:focus-visible {
   align-items: center;
   pointer-events: none;
   transform: translate(-50%, -50%);
-  transition: left .9s cubic-bezier(.22, 1, .36, 1), top .9s cubic-bezier(.22, 1, .36, 1);
+  transition-property: left, top;
+  transition-timing-function: linear;
+  will-change: left, top;
 }
 
-.team-marker > span {
-  width: 24px;
-  height: 24px;
+.vehicle-marker {
+  position: relative;
   z-index: 2;
   display: grid;
   place-items: center;
+  width: 44px;
+  height: 32px;
   border: 2px solid #fffdf4;
-  border-radius: 50% 50% 50% 0;
+  border-radius: 999px;
   background: linear-gradient(150deg, #e2a23c, #d95f43);
   box-shadow: 0 4px 14px rgba(140, 60, 20, .55);
-  color: #fff7ec;
-  font-size: 10px;
-  font-weight: 900;
-  transform: rotate(-45deg);
+  overflow: visible;
 }
 
-.team-marker > span em {
-  transform: rotate(45deg);
-  font-style: normal;
+.vehicle-marker-icon {
+  width: 32px;
+  height: 22px;
+  overflow: visible;
+  filter: drop-shadow(0 2px 2px rgba(74, 31, 15, .35));
+}
+
+.vehicle-body {
+  fill: #fff7ec;
+  stroke: #7c2d12;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.vehicle-window {
+  fill: #70c3cd;
+  stroke: #7c2d12;
+  stroke-width: .8;
+}
+
+.vehicle-wheel {
+  fill: #16333d;
+  stroke: #fffdf4;
+  stroke-width: .8;
+}
+
+.vehicle-hub {
+  fill: #e2a23c;
+}
+
+.team-marker.is-moving .vehicle-marker {
+  animation: vehicle-drive-bob .18s ease-in-out infinite alternate;
+}
+
+.team-marker.is-moving .vehicle-wheel {
+  animation: vehicle-wheel-flash .22s linear infinite;
 }
 
 .team-marker small {
@@ -640,6 +673,11 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
+.team-marker.is-moving small {
+  border-color: rgba(217, 95, 67, .7);
+  color: #7c3116;
+}
+
 .marker-ring {
   position: absolute;
   z-index: 1;
@@ -654,6 +692,16 @@ select:focus-visible {
 @keyframes marker-pulse {
   from { opacity: .9; transform: scale(.5); }
   to { opacity: 0; transform: scale(1.5); }
+}
+
+@keyframes vehicle-drive-bob {
+  from { transform: translateY(-1px) rotate(-1deg); }
+  to { transform: translateY(1px) rotate(1deg); }
+}
+
+@keyframes vehicle-wheel-flash {
+  0%, 49% { stroke: #fffdf4; }
+  50%, 100% { stroke: #e2a23c; }
 }
 
 /* ---------- JRPG command box ---------- */

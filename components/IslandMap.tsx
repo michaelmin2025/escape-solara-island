@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import { locations } from "@/game/locations";
 import { vehicles } from "@/game/vehicles";
 import type { GameState } from "@/types/game";
@@ -119,6 +121,8 @@ const WAVES: Array<[number, number]> = [
   [180, 80]
 ];
 
+export const MAP_TRAVEL_ANIMATION_MS = 820;
+
 function Pines({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`} fill="#3a6a4f" opacity=".5">
@@ -140,13 +144,34 @@ function Lighthouse({ x, y }: { x: number; y: number }) {
 
 export function IslandMap({ state, onDrive }: IslandMapProps) {
   const current = locations[state.currentLocation];
+  const activeVehicle = vehicles[state.inventory.activeVehicle];
+  const [markerPosition, setMarkerPosition] = useState(() => ({ x: current.x, y: current.y }));
+  const [isMoving, setIsMoving] = useState(false);
+  const renderedLocationRef = useRef(state.currentLocation);
   const blocked = Boolean(state.currentDecision || state.activeMission) || state.phase !== "playing";
+
+  useEffect(() => {
+    if (renderedLocationRef.current === state.currentLocation) return;
+
+    renderedLocationRef.current = state.currentLocation;
+    setIsMoving(true);
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      setMarkerPosition({ x: current.x, y: current.y });
+    });
+    const finishTimer = window.setTimeout(() => setIsMoving(false), MAP_TRAVEL_ANIMATION_MS);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(finishTimer);
+    };
+  }, [current.x, current.y, state.currentLocation]);
 
   return (
     <section className="panel map-panel flex min-h-0 flex-col overflow-hidden">
       <header className="panel-header shrink-0">
         <div><p className="label">FIELD CHART · LEVANTINE COAST</p><h2 className="panel-title">Isla Solara</h2></div>
-        <div className="text-right"><p className="label">TEAM LOCATION</p><strong className="text-xs text-solara-coral">{current.name}</strong></div>
+        <div className="text-right"><p className="label">TEAM LOCATION</p><strong className="text-xs text-solara-coral">{isMoving ? `En route · ${current.name}` : current.name}</strong></div>
       </header>
       <div className="map-wrap min-h-0 flex-1">
         <div className="island-map relative overflow-hidden">
@@ -274,10 +299,28 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
           );
         })}
 
-        <div className="team-marker" style={{ left: `${current.x}%`, top: `${current.y}%` }}>
+        <div
+          className={`team-marker ${isMoving ? "is-moving" : ""}`}
+          style={{
+            left: `${markerPosition.x}%`,
+            top: `${markerPosition.y}%`,
+            transitionDuration: `${MAP_TRAVEL_ANIMATION_MS}ms`
+          }}
+          role="img"
+          aria-label={isMoving ? `${activeVehicle.name} driving to ${current.name}` : `${activeVehicle.name} at ${current.name}`}
+        >
           <i className="marker-ring" />
-          <span><em>✦</em></span>
-          <small>{vehicles[state.inventory.activeVehicle].name}</small>
+          <span className="vehicle-marker" aria-hidden="true">
+            <svg className="vehicle-marker-icon" viewBox="0 0 36 24">
+              <path className="vehicle-body" d="M4 12.5 7.5 7h15.2l5 5.5H32c1.1 0 2 .9 2 2v3H2v-3c0-1.1.9-2 2-2Z" />
+              <path className="vehicle-window" d="m10 8.5-2.2 4h8.7v-4Zm8.5 0v4h6.2l-3.5-4Z" />
+              <circle className="vehicle-wheel" cx="9" cy="18" r="3" />
+              <circle className="vehicle-wheel" cx="27" cy="18" r="3" />
+              <circle className="vehicle-hub" cx="9" cy="18" r="1" />
+              <circle className="vehicle-hub" cx="27" cy="18" r="1" />
+            </svg>
+          </span>
+          <small aria-live="polite">{isMoving ? `Driving · ${current.shortName}` : activeVehicle.name}</small>
         </div>
 
         <div className="absolute bottom-3 left-3 rounded border border-solara-ink/35 bg-[#fffdf4]/90 px-3 py-2 text-[7px] font-bold uppercase tracking-[.16em] text-solara-ink/60 backdrop-blur">
