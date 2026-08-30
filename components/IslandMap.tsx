@@ -17,79 +17,76 @@ interface IslandMapProps {
  * stay aligned at any panel size.
  */
 const ISLAND =
-  "M70 292" +
-  "C76 268 84 252 96 246" +
-  "C108 240 118 240 126 234" +
-  "C136 226 142 208 150 188" +
-  "C156 168 160 146 165 130" +
-  "C170 124 174 128 178 140" +
-  "C184 156 190 168 198 176" +
-  "C208 168 214 148 222 128" +
-  "C228 112 234 104 238 108" +
-  "C246 118 252 140 258 156" +
-  "C266 174 278 180 292 176" +
-  "C304 168 316 148 330 132" +
-  "C340 142 352 152 364 154" +
-  "C378 156 394 130 410 116" +
-  "C422 122 436 130 450 134" +
-  "C462 138 470 118 480 102" +
-  "C492 84 512 76 528 76" +
-  "C546 76 560 90 575 106" +
-  "C590 118 606 126 620 128" +
-  "C634 130 648 116 660 106" +
-  "C672 112 686 120 700 124" +
-  "C716 128 732 112 748 100" +
-  "C760 92 780 88 796 94" +
-  "C812 100 828 108 842 106" +
-  "C858 104 872 118 886 132" +
-  "C900 144 912 148 924 142" +
-  "C936 136 948 146 958 160" +
-  "C970 174 986 186 1000 194" +
-  "C1016 204 1032 212 1042 224" +
-  "C1050 234 1056 244 1058 254" +
-  "C1062 264 1062 276 1060 288" +
-  "C1058 292 1050 296 1040 300" +
-  "C1028 305 1010 310 998 315" +
-  "C992 317 988 317 986 318" +
-  "C990 323 998 326 1008 329" +
-  "C1022 334 1038 340 1048 348" +
-  "C1056 354 1060 360 1060 366" +
-  "C1060 374 1054 382 1046 390" +
-  "C1034 402 1018 410 1002 415" +
-  "C986 420 972 421 962 417" +
-  "C956 413 952 407 946 407" +
-  "C940 411 938 419 930 425" +
-  "C916 435 900 443 888 447" +
-  "C876 451 868 459 862 467" +
-  "C858 473 852 477 846 475" +
-  "C840 473 836 467 830 465" +
-  "C818 461 806 463 794 465" +
-  "C778 467 762 463 748 459" +
-  "C736 455 726 449 716 445" +
-  "C710 441 704 443 698 445" +
-  "C688 449 678 449 668 447" +
-  "C652 443 640 445 628 447" +
-  "C612 449 596 451 582 449" +
-  "C578 443 576 435 572 431" +
-  "C568 437 566 445 560 449" +
-  "C548 455 534 453 520 449" +
-  "C504 445 490 443 476 441" +
-  "C458 439 444 433 430 427" +
-  "C412 421 396 419 380 419" +
-  "C360 419 342 417 326 413" +
-  "C312 411 298 407 288 403" +
-  "C280 401 274 401 268 401" +
-  "C262 401 256 403 248 403" +
-  "C232 403 216 397 200 391" +
-  "C182 385 166 377 150 369" +
-  "C134 361 116 351 102 341" +
-  "C88 331 76 314 70 292Z";
+  "M72 290" +
+  "C80 260 88 248 100 240" +
+  "C118 232 134 222 148 196" +
+  "C156 172 158 140 166 124" +
+  "C172 118 178 124 182 140" +
+  "C188 156 196 164 206 162" +
+  "C214 150 220 128 228 110" +
+  "C232 102 238 100 242 106" +
+  "C250 118 254 134 260 146" +
+  "C272 162 288 168 300 162" +
+  "C314 156 322 142 334 130" +
+  "C344 138 354 148 366 150" +
+  "C380 152 392 132 406 118" +
+  "C416 120 430 126 444 130" +
+  "C458 134 466 116 478 100" +
+  "C488 84 506 74 528 72" +
+  "C548 70 562 84 576 102" +
+  "C590 116 606 124 620 126" +
+  "C636 128 650 114 662 104" +
+  "C674 112 688 120 700 122" +
+  "C716 126 732 110 750 98" +
+  "C764 90 782 86 798 92" +
+  "C814 98 830 106 844 104" +
+  "C860 102 874 116 888 130" +
+  "C902 142 914 146 926 140" +
+  "C938 134 950 144 960 158" +
+  "C976 172 994 184 1008 194" +
+  "C1022 204 1038 214 1048 226" +
+  "C1056 236 1060 250 1060 262" +
+  "C1060 272 1057 278 1052 284" +
+  "C1038 296 1018 306 998 314" +
+  "C978 322 960 330 946 336" +
+  "C954 350 970 358 990 366" +
+  "C1010 374 1030 380 1044 386" +
+  "C1052 392 1056 400 1054 408" +
+  "C1046 418 1034 426 1018 432" +
+  "C1000 438 984 440 972 430" +
+  "C964 428 958 420 950 420" +
+  "C944 422 940 430 932 436" +
+  "C916 446 900 452 888 456" +
+  "C876 460 868 466 862 472" +
+  "C856 476 850 478 844 476" +
+  "C838 474 834 468 828 466" +
+  "C816 462 804 464 792 466" +
+  "C776 468 760 464 746 460" +
+  "C734 456 724 450 714 446" +
+  "C708 442 702 444 696 446" +
+  "C686 450 676 450 666 448" +
+  "C650 444 638 446 626 448" +
+  "C610 450 594 452 580 450" +
+  "C576 444 574 436 570 432" +
+  "C566 438 564 446 558 450" +
+  "C546 456 532 454 518 450" +
+  "C502 446 488 444 474 442" +
+  "C456 440 442 434 428 428" +
+  "C410 422 394 420 378 420" +
+  "C358 420 340 418 324 414" +
+  "C310 410 296 406 286 402" +
+  "C278 400 272 400 266 400" +
+  "C258 400 252 402 244 402" +
+  "C228 402 212 396 196 390" +
+  "C178 384 162 376 148 368" +
+  "C132 360 116 350 104 340" +
+  "C90 330 78 314 72 290Z";
 
 const MAIN_ROAD =
   "M88 286 C170 272 300 250 418 235 C500 224 520 258 583 269 C660 282 740 296 820 300 C900 304 970 296 1030 290";
 
 const SIDE_ROADS = [
-  "M88 286 C108 248 134 206 152 172 C158 160 162 152 164 144",
+  "M88 286 C130 300 170 270 186 230 C196 200 180 168 168 142",
   "M88 286 C140 330 200 372 260 388",
   "M418 235 C450 192 490 128 526 90",
   "M583 269 C620 228 660 178 691 150",
@@ -119,7 +116,7 @@ const WAVES: Array<[number, number]> = [
   [470, 508],
   [760, 502],
   [1022, 452],
-  [180, 170]
+  [180, 80]
 ];
 
 function Pines({ x, y }: { x: number; y: number }) {
@@ -146,12 +143,13 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
   const blocked = Boolean(state.currentDecision || state.activeMission) || state.phase !== "playing";
 
   return (
-    <section className="panel flex min-h-[390px] flex-col overflow-hidden">
-      <header className="panel-header">
+    <section className="panel map-panel flex min-h-0 flex-col overflow-hidden">
+      <header className="panel-header shrink-0">
         <div><p className="label">FIELD CHART · LEVANTINE COAST</p><h2 className="panel-title">Isla Solara</h2></div>
         <div className="text-right"><p className="label">TEAM LOCATION</p><strong className="text-xs text-solara-coral">{current.name}</strong></div>
       </header>
-      <div className="island-map relative min-h-0 flex-1 overflow-hidden">
+      <div className="map-wrap min-h-0 flex-1">
+        <div className="island-map relative overflow-hidden">
         <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1100 560" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <linearGradient id="landGrad" x1="0" y1="0" x2="0" y2="1">
@@ -175,8 +173,8 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
           <path d={ISLAND} fill="none" stroke="#4ed2c4" strokeWidth="26" opacity=".24" />
 
           {/* beach rim + foam line */}
-          <path d={ISLAND} fill="none" stroke="#ecd9a4" strokeWidth="20" opacity=".95" />
-          <path d={ISLAND} fill="none" stroke="#f4fffb" strokeWidth="4" opacity=".9" />
+          <path d={ISLAND} fill="none" stroke="#ecd9a4" strokeWidth="14" opacity=".95" />
+          <path d={ISLAND} fill="none" stroke="#f4fffb" strokeWidth="3" opacity=".9" />
 
           {/* land */}
           <path d={ISLAND} fill="url(#landGrad)" filter="url(#landShadow)" />
@@ -214,12 +212,12 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
           <g transform="translate(404 219) rotate(-14)">
             <rect x="-16" y="-2.5" width="32" height="5" rx="1.5" fill="#f8f1dd" stroke="#16333d" strokeOpacity=".35" strokeWidth="1" />
           </g>
-          <Lighthouse x={238} y={106} />
-          <Lighthouse x={1048} y={238} />
-          <text x={230} y={122} fontFamily="Georgia, serif" fontSize="7" letterSpacing="1" fill="#16333d" opacity=".7">FAR TRAMUNTANA</text>
-          <text x={1006} y={254} fontFamily="Georgia, serif" fontSize="7" letterSpacing="1" fill="#16333d" opacity=".7">FAR LLEVANT</text>
+          <Lighthouse x={240} y={112} />
+          <Lighthouse x={1050} y={242} />
+          <text x={242} y={134} textAnchor="middle" fontFamily="Georgia, serif" fontSize="7" letterSpacing="1" fill="#16333d" opacity=".7">FAR TRAMUNTANA</text>
+          <text x={1040} y={270} textAnchor="middle" fontFamily="Georgia, serif" fontSize="7" letterSpacing="1" fill="#16333d" opacity=".7">FAR LLEVANT</text>
           <text x={98} y={306} fontSize="11" fill="#0a5468" opacity=".8">⚓</text>
-          <text x={996} y={326} fontSize="11" fill="#0a5468" opacity=".8">⚓</text>
+          <text x={1000} y={346} fontSize="11" fill="#0a5468" opacity=".8">⚓</text>
 
           {/* ferry line off the marina */}
           <path d="M268 402 C230 434 192 452 160 470" fill="none" stroke="#0a5468" strokeWidth="1.5" strokeDasharray="4 5" opacity=".5" />
@@ -234,14 +232,6 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
             [334, 60]
           ].map(([x, y]) => <path key={`g${x}`} d={`M${x} ${y}q4 -5 8 0q4 -5 8 0`} fill="none" stroke="#16333d" strokeWidth="1.3" opacity=".5" />)}
 
-          {/* compass rose */}
-          <g transform="translate(96 88)" opacity=".85">
-            <circle r="24" fill="none" stroke="#16333d" strokeWidth="1.4" opacity=".5" />
-            <path d="M0 -20 L4 -4 L20 0 L4 4 L0 20 L-4 4 L-20 0 L-4 -4Z" fill="#0a5468" opacity=".6" />
-            <circle r="2.4" fill="#16333d" opacity=".7" />
-            <text y="-30" textAnchor="middle" fontFamily="Georgia, serif" fontSize="11" fontWeight="700" fill="#16333d">N</text>
-          </g>
-
           {/* scale bar */}
           <g transform="translate(70 506)" stroke="#16333d" opacity=".6">
             <path d="M0 -4v8M60 -4v8M120 -4v8M0 0h120" strokeWidth="1.4" fill="none" />
@@ -253,6 +243,17 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
           {/* chart frame */}
           <rect x="5" y="5" width="1090" height="550" fill="none" stroke="#16333d" strokeOpacity=".45" strokeWidth="2" />
           <rect x="11" y="11" width="1078" height="538" fill="none" stroke="#16333d" strokeOpacity=".16" strokeWidth="1" />
+        </svg>
+
+        {/* compass rose — drawn in its own SVG so the stretching chart never oval it */}
+        <svg className="absolute left-[3%] top-[8%] aspect-square h-[24%]" viewBox="0 0 80 92" aria-hidden="true">
+          <g opacity=".85">
+            <circle cx="40" cy="52" r="26" fill="rgba(255,253,244,.25)" stroke="#16333d" strokeWidth="1.5" opacity=".55" />
+            <path d="M40 30 L44 48 L62 52 L44 56 L40 74 L36 56 L18 52 L36 48Z" fill="#0a5468" opacity=".6" />
+            <circle cx="40" cy="52" r="2.4" fill="#16333d" opacity=".7" />
+            <text x="40" y="12" textAnchor="middle" fontFamily="Georgia, serif" fontSize="13" fontWeight="700" fill="#16333d">N</text>
+            <text x="40" y="90" textAnchor="middle" fontFamily="Georgia, serif" fontSize="8" letterSpacing="2" fill="#16333d" opacity=".7">SOLARA KEY</text>
+          </g>
         </svg>
 
         {Object.values(locations).map((location) => {
@@ -268,7 +269,7 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
               title={discovered ? `${location.name} · ${location.description}` : "Undiscovered location"}
             >
               <i />
-              <span>{discovered ? location.shortName : "UNKNOWN"}</span>
+              {discovered ? <span>{location.shortName}</span> : null}
             </button>
           );
         })}
@@ -281,6 +282,7 @@ export function IslandMap({ state, onDrive }: IslandMapProps) {
 
         <div className="absolute bottom-3 left-3 rounded border border-solara-ink/35 bg-[#fffdf4]/90 px-3 py-2 text-[7px] font-bold uppercase tracking-[.16em] text-solara-ink/60 backdrop-blur">
           MENORCA-INSPIRED CARTOGRAPHY · FICTIONAL ISLAND
+        </div>
         </div>
       </div>
     </section>

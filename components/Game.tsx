@@ -4,10 +4,8 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { AgentActivityFeed } from "./AgentActivityFeed";
 import { CharacterCard } from "./CharacterCard";
 import { DialoguePanel } from "./DialoguePanel";
-import { HandlerDecision } from "./HandlerDecision";
 import { IslandMap } from "./IslandMap";
 import { MissionPanel } from "./MissionPanel";
-import { ObjectiveBar } from "./ObjectiveBar";
 import {
   answerHotelCall,
   attemptEscape,
@@ -20,6 +18,7 @@ import {
   formatClock,
   formatDuration,
   formatMoney,
+  getObjective,
   restTogether,
   setHandlerDirective,
   startTeamMission,
@@ -35,23 +34,88 @@ import type { ActionResult, GameState, VehicleId, WeaponId } from "@/types/game"
 const STORAGE_KEY = "escape-solara-island:v2";
 
 function Heat({ value }: { value: number }) {
-  const heat = Math.round(value);
-  return <span className="tracking-wider text-solara-coral">{"★".repeat(heat)}{"☆".repeat(5 - heat)}</span>;
+  const heat = Math.min(5, Math.max(0, Math.round(value)));
+  return (
+    <span className="tracking-wider" aria-label={`${heat} of 5 heat`}>
+      <span className="text-solara-coral">{"★".repeat(heat)}</span>
+      <span className="text-solara-ink/25">{"★".repeat(5 - heat)}</span>
+    </span>
+  );
 }
 
-function PosterSea() {
+function Palm({ x, flip = false }: { x: number; flip?: boolean }) {
   return (
-    <svg className="poster-sea" viewBox="0 0 1200 300" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M0 92 Q300 68 600 92 T1200 92 V300 H0Z" fill="#2fa3a8" opacity=".85" />
-      <path d="M0 138 Q300 112 600 138 T1200 138 V300 H0Z" fill="#1f8e9b" opacity=".9" />
-      <path d="M0 186 Q300 158 600 186 T1200 186 V300 H0Z" fill="#137089" />
-      <g transform="translate(880 210)">
-        <path d="M-70 26 Q0 6 74 24 L60 40 Q0 52 -58 40Z" fill="#0e5568" opacity=".9" />
-        <path d="M-40 30 L40 30 L30 44 L-32 44Z" fill="#f6efdb" opacity=".9" />
-      </g>
-      <path d="M198 168 l7 -16 l7 16Z M203 154 l2 -10 l2 10Z" fill="#fbf5e5" opacity=".9" />
-      <path d="M0 236 Q300 208 600 236 T1200 236 V300 H0Z" fill="#0c4e64" />
-    </svg>
+    <g transform={`translate(${x} 662) scale(${flip ? -1.1 : 1.1} 1.1)`} fill="none" stroke="#170533" strokeLinecap="round">
+      <path d="M-8 2 C0 -60 12 -122 36 -172 L52 -168 C30 -118 18 -58 12 2 Z" fill="#170533" stroke="none" />
+      <path d="M44 -170 C20 -200 -18 -212 -52 -204" strokeWidth="9" />
+      <path d="M44 -170 C34 -208 8 -234 -28 -242" strokeWidth="9" />
+      <path d="M44 -170 C58 -212 92 -232 132 -232" strokeWidth="9" />
+      <path d="M44 -170 C88 -196 130 -192 162 -168" strokeWidth="9" />
+      <path d="M44 -170 C92 -172 134 -152 158 -120" strokeWidth="9" />
+      <path d="M44 -170 C20 -194 -12 -196 -44 -180" strokeWidth="9" />
+    </g>
+  );
+}
+
+function OpeningScene() {
+  return (
+    <div className="opening-scene" aria-hidden="true">
+      <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <linearGradient id="skyGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="900">
+            <stop offset="0" stopColor="#12042e" />
+            <stop offset=".3" stopColor="#3c0d5c" />
+            <stop offset=".5" stopColor="#8f1a6e" />
+            <stop offset=".63" stopColor="#e13a78" />
+            <stop offset=".72" stopColor="#ff6a4d" />
+            <stop offset=".78" stopColor="#ffb36b" />
+          </linearGradient>
+          <linearGradient id="sunGrad" gradientUnits="userSpaceOnUse" x1="0" y1="420" x2="0" y2="660">
+            <stop offset="0" stopColor="#fff3c9" />
+            <stop offset=".45" stopColor="#ffd07e" />
+            <stop offset=".78" stopColor="#ff8a5e" />
+            <stop offset="1" stopColor="#ff4f96" />
+          </linearGradient>
+          <linearGradient id="seaGrad" gradientUnits="userSpaceOnUse" x1="0" y1="660" x2="0" y2="900">
+            <stop offset="0" stopColor="#0f6f80" />
+            <stop offset="1" stopColor="#052738" />
+          </linearGradient>
+        </defs>
+
+        <rect width="1600" height="660" fill="url(#skyGrad)" />
+        {[[120, 82, 2.4], [262, 150, 1.8], [420, 62, 2.8], [680, 122, 1.6], [902, 58, 2.2], [1062, 142, 1.8], [1182, 88, 2.6], [1342, 168, 1.8], [1482, 62, 2.4]].map(([x, y, r]) => (
+          <circle key={`${x}${y}`} cx={x} cy={y} r={r} fill="#ffe9f4" opacity=".55" />
+        ))}
+        <path d="M330 236q10 -12 20 0q10 -12 20 0" stroke="#170533" strokeWidth="4" fill="none" opacity=".55" strokeLinecap="round" />
+        <path d="M446 196q8 -10 16 0q8 -10 16 0" stroke="#170533" strokeWidth="3.4" fill="none" opacity=".5" strokeLinecap="round" />
+        <path d="M1240 216q9 -11 18 0q9 -11 18 0" stroke="#170533" strokeWidth="3.4" fill="none" opacity=".5" strokeLinecap="round" />
+
+        {/* retro sun with synthwave slits — slit rects reuse the sky gradient so they cut cleanly */}
+        <circle cx="1080" cy="660" r="250" fill="url(#sunGrad)" />
+        <rect x="820" y="556" width="520" height="7" fill="url(#skyGrad)" />
+        <rect x="820" y="580" width="520" height="9" fill="url(#skyGrad)" />
+        <rect x="820" y="604" width="520" height="11" fill="url(#skyGrad)" />
+        <rect x="820" y="628" width="520" height="14" fill="url(#skyGrad)" />
+        <rect x="820" y="652" width="520" height="17" fill="url(#skyGrad)" />
+
+        <rect y="660" width="1600" height="240" fill="url(#seaGrad)" />
+        <rect y="662" width="1600" height="2" fill="#9adfd8" opacity=".35" />
+        <rect y="700" width="1600" height="2" fill="#9adfd8" opacity=".14" />
+        <rect y="748" width="1600" height="2" fill="#9adfd8" opacity=".1" />
+        <rect y="804" width="1600" height="2" fill="#9adfd8" opacity=".07" />
+        <g fill="#ffb36b">
+          <rect x="1022" y="672" width="116" height="6" rx="3" opacity=".5" />
+          <rect x="1040" y="690" width="80" height="5" rx="2.5" opacity=".38" />
+          <rect x="1028" y="712" width="104" height="5" rx="2.5" opacity=".28" />
+          <rect x="1048" y="736" width="64" height="4" rx="2" opacity=".2" />
+          <rect x="1032" y="762" width="96" height="4" rx="2" opacity=".13" />
+          <rect x="1052" y="790" width="56" height="4" rx="2" opacity=".08" />
+        </g>
+
+        <Palm x={210} />
+        <Palm x={1390} flip />
+      </svg>
+    </div>
   );
 }
 
@@ -145,27 +209,21 @@ export function Game() {
   if (!state) {
     return (
       <main className="opening-screen">
-        <i className="poster-sun" aria-hidden="true" />
-        <PosterSea />
-        <section className="opening-card">
-          <div className="opening-sun">S</div>
-          <div className="opening-card-body">
-            <p className="label">ISLA SOLARA · MEDITERRÁNEO — A WEBMCP ISLAND ADVENTURE</p>
-            <h1 className="opening-title">ESCAPE<br /><em>Solara</em> ISLAND</h1>
-            <p className="max-w-xl text-sm leading-6 text-solara-ink/65">Alex and Maya just landed on a beautiful Mediterranean island with a dangerous six-day job waiting beyond the hotel.</p>
-            <div className="my-6 flex items-center gap-4 rounded-md border border-solara-ink/20 bg-white/45 p-4">
-              <i className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-solara-coral shadow-[0_0_14px_#d95f43]" />
-              <div><small className="block text-[8px] font-black tracking-[.16em] text-solara-coral">INCOMING FIELD CHECK-IN</small><strong className="mt-1 block font-display text-sm italic text-solara-ink/80">“We&apos;re at Solara Airport. Tell us where to go.”</strong></div>
+        <OpeningScene />
+        <section className="opening-menu">
+          <h1 className="opening-title">
+            <span className="title-line">Escape</span>
+            <strong className="title-hero">Solara</strong>
+            <span className="title-line">Island</span>
+          </h1>
+          <p className="opening-tagline">Agents Alex and Maya have landed on the beautiful Mediterranean island and are awaiting your orders.</p>
+          <form className="opening-form" onSubmit={begin}>
+            <label className="opening-label" htmlFor="handler-name">HANDLER NAME</label>
+            <div className="opening-row">
+              <input id="handler-name" name="handler" maxLength={28} required autoComplete="name" className="opening-input" />
+              <button className="opening-btn">Begin →</button>
             </div>
-            <form onSubmit={begin}>
-              <label className="label mb-2 block" htmlFor="handler-name">ENTER YOUR HANDLER NAME</label>
-              <div className="grid grid-cols-[1fr_auto] max-sm:grid-cols-1 max-sm:gap-2">
-                <input id="handler-name" name="handler" maxLength={28} required autoComplete="name" placeholder="e.g. Michael" className="control rounded-r-none px-4 py-4 text-sm max-sm:rounded-md" />
-                <button className="btn-primary rounded-l-none px-6 text-[10px] font-black tracking-widest max-sm:min-h-12 max-sm:rounded-md">BEGIN THE EXPEDITION →</button>
-              </div>
-            </form>
-            <p className="mt-5 text-[10px] leading-5 text-solara-ink/45">You set strategy. An AI agent can operate the shared world through WebMCP. Consequential decisions return to you.</p>
-          </div>
+          </form>
         </section>
       </main>
     );
@@ -173,6 +231,7 @@ export function Game() {
 
   const averages = teamAverages(state);
   const readiness = escapeReadiness(state);
+  const objective = getObjective(state);
   const blocked = state.phase !== "playing" || Boolean(state.activeMission || state.currentDecision);
 
   return (
@@ -181,7 +240,11 @@ export function Game() {
         <div className="brand"><span>S</span><div><small>ESCAPE</small><strong>SOLARA ISLAND</strong></div></div>
         <div className="top-stat"><small>HANDLER</small><strong>{state.handler.name}</strong></div>
         <div className="top-stat"><small>EXPEDITION LOG</small><strong>DAY {Math.min(dayOf(state), 6)} · {formatClock(state)}</strong></div>
-        <div className="top-stat"><small>ESCAPE FUND</small><strong className="text-solara-coral">{formatMoney(state.cash)} / $500K</strong></div>
+        <div className="top-stat top-objective">
+          <small>CURRENT OBJECTIVE</small>
+          <strong className="obj-line"><span className="obj-title">{objective.title}</span><span className="obj-cash">{formatMoney(state.cash)} / {formatMoney(state.targetCash)}</span></strong>
+          <div className="obj-bar"><i style={{ width: `${Math.max(3, objective.progress * 100)}%` }} /></div>
+        </div>
         <div className="top-stat"><small>FINAL WINDOW</small><strong>{formatDuration(timeRemaining(state))}</strong></div>
         <div className="mcp-pill"><i />{webMcpStatus}</div>
         <button onClick={reset} className="mr-3 grid h-8 w-8 place-items-center self-center rounded-full border border-solara-ink/30 text-solara-ink/60 hover:border-solara-ink/70 hover:text-solara-ink" aria-label="Reset operation">↻</button>
@@ -221,22 +284,26 @@ export function Game() {
 
         <section className="center-column">
           <IslandMap state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} />
-          <ObjectiveBar state={state} />
-          <DialoguePanel lines={state.dialogue} />
-          <MissionPanel state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} onStart={(mission) => act((draft) => startTeamMission(draft, mission))} />
+          <DialoguePanel
+            lines={state.dialogue}
+            decision={state.currentDecision}
+            handlerName={state.handler.name}
+            onChoose={(option) => act((draft) => choosePath(draft, option))}
+          />
         </section>
 
         <aside className="flex min-h-0 flex-col gap-3">
           <AgentActivityFeed activity={state.activityLog} />
+          <MissionPanel state={state} onDrive={(destination) => act((draft) => driveTeam(draft, destination))} onStart={(mission) => act((draft) => startTeamMission(draft, mission))} />
           <section className="panel shrink-0 p-3">
             <p className="label">FINAL EXTRACTION</p>
-            <h2 className="panel-title mt-1">Escape readiness</h2>
-            <div className="my-3 grid grid-cols-3 gap-1.5">
-              {Object.entries({ Objective: readiness.objective, "$500K": readiness.cash, Team: readiness.alive, Airfield: readiness.airfield, "Heat ≤ 3": readiness.heat, Time: readiness.time }).map(([label, ready]) => (
-                <span key={label} className={`rounded border px-1 py-2 text-center text-[7px] font-bold ${ready ? "border-solara-pine/40 bg-solara-pine/10 text-solara-pine" : "border-solara-ink/15 text-solara-ink/40"}`}>{ready ? "✓" : "○"} {label}</span>
-              ))}
-            </div>
-            <button disabled={blocked} onClick={() => act(attemptEscape)} className="btn-primary w-full px-3 py-3 text-[9px] font-black tracking-widest disabled:opacity-40">ATTEMPT ESCAPE ✈</button>
+              <h2 className="panel-title mt-1">Escape readiness</h2>
+              <div className="my-3 grid grid-cols-3 gap-1.5">
+                {Object.entries({ Objective: readiness.objective, "$500K": readiness.cash, Team: readiness.alive, Airfield: readiness.airfield, "Heat ≤ 3": readiness.heat, Time: readiness.time }).map(([label, ready]) => (
+                  <span key={label} className={`rounded border px-1 py-2 text-center text-[7px] font-bold ${ready ? "border-solara-pine/40 bg-solara-pine/10 text-solara-pine" : "border-solara-ink/15 text-solara-ink/40"}`}>{ready ? "✓" : "○"} {label}</span>
+                ))}
+              </div>
+              <button disabled={blocked} onClick={() => act(attemptEscape)} className="btn-primary w-full px-3 py-3 text-[9px] font-black tracking-widest disabled:opacity-40">ATTEMPT ESCAPE ✈</button>
           </section>
         </aside>
       </div>
@@ -260,8 +327,6 @@ export function Game() {
           </section>
         </div>
       )}
-
-      {state.currentDecision && <HandlerDecision decision={state.currentDecision} handlerName={state.handler.name} onChoose={(option) => act((draft) => choosePath(draft, option))} />}
 
       {(state.phase === "won" || state.phase === "lost") && state.ending && (
         <div className="modal-layer" role="dialog" aria-modal="true">
